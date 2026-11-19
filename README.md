@@ -19,18 +19,18 @@ A white-label, multi-tenant blogging platform built with Laravel 11 and stancl/t
 
 ## Technology stack
 
-| Component | Version used |
-| --- | --- |
-| PHP | 8.4 (the locked dependencies require PHP 8.4.1 or newer) |
-| Laravel | 11.x (locked at 11.57.1) |
-| stancl/tenancy | ^3.8 (locked at 3.10.1) |
-| Inertia.js | inertiajs/inertia-laravel ^2.0 and @inertiajs/react ^2.0 |
-| React | 18 |
-| Vite | 5 |
-| Tailwind CSS | 3 |
-| Node.js | 24 (used locally and in CI) |
-| MySQL | 8.0 or newer (local development verified on 9.7.1) |
-| PHPUnit | 10.5 (tests use SQLite in memory) |
+| Component      | Version used                                             |
+| -------------- | -------------------------------------------------------- |
+| PHP            | 8.4 (the locked dependencies require PHP 8.4.1 or newer) |
+| Laravel        | 11.x (locked at 11.57.1)                                 |
+| stancl/tenancy | ^3.8 (locked at 3.10.1)                                  |
+| Inertia.js     | inertiajs/inertia-laravel ^2.0 and @inertiajs/react ^2.0 |
+| React          | 18                                                       |
+| Vite           | 5                                                        |
+| Tailwind CSS   | 3                                                        |
+| Node.js        | 24 (used locally and in CI)                              |
+| MySQL          | 8.0 or newer (local development verified on 9.7.1)       |
+| PHPUnit        | 10.5 (tests use SQLite in memory)                        |
 
 The writer and admin screens come from Laravel Breeze with React and Inertia.
 
@@ -124,15 +124,15 @@ Tenant logos are served from `/storage/...`. Herd serves that path from `storage
 1. Register a central account at `http://blogs.test/register`.
 2. Promote it to administrator from the project directory:
 
-   ```bash
-   php artisan admin:promote you@example.com
-   ```
+    ```bash
+    php artisan admin:promote you@example.com
+    ```
 
-   The command only promotes an existing central user. If another administrator already exists, it refuses unless you add `--force`:
+    The command only promotes an existing central user. If another administrator already exists, it refuses unless you add `--force`:
 
-   ```bash
-   php artisan admin:promote you@example.com --force
-   ```
+    ```bash
+    php artisan admin:promote you@example.com --force
+    ```
 
 3. Sign in at `http://blogs.test/login` and open `http://blogs.test/admin`.
 
@@ -177,11 +177,11 @@ Writers manage posts at `http://{tenant-domain}/posts`.
 
 ### Statuses
 
-| Status | Publish date | Public? |
-| --- | --- | --- |
-| Draft | Cleared | No |
+| Status    | Publish date                    | Public?                                   |
+| --------- | ------------------------------- | ----------------------------------------- |
+| Draft     | Cleared                         | No                                        |
 | Scheduled | Required, must be in the future | Only after the scheduled job publishes it |
-| Published | Required, any valid date | Yes |
+| Published | Required, any valid date        | Yes                                       |
 
 ### Cover images
 
@@ -231,10 +231,10 @@ php artisan db:seed --class=DemoTenantSeeder
 
 These credentials are for local development only.
 
-| Blog | Domain | Writer email | Password |
-| --- | --- | --- | --- |
+| Blog           | Domain            | Writer email             | Password |
+| -------------- | ----------------- | ------------------------ | -------- |
 | Harbor Journal | harbor.blogs.test | writer@harbor.blogs.test | password |
-| Pine and Paper | pine.blogs.test | writer@pine.blogs.test | password |
+| Pine and Paper | pine.blogs.test   | writer@pine.blogs.test   | password |
 
 Writer login is at `http://harbor.blogs.test/login` and `http://pine.blogs.test/login`.
 
@@ -333,4 +333,10 @@ Authentication is split into two guards: `web` for central users and `writer` fo
 
 ### Personal reflection
 
-> **To personalize:** Add your own reflection here: what was hardest, what you would do differently, and what you want to explore next. This part cannot be written from the code.
+Building this project helped me understand how multi-tenancy works in Laravel. I learned how domains identify tenants and how each tenant can have a separate database.
+
+The most challenging part was maintaining tenant isolation, especially for posts, writers, uploaded images, caching and scheduled jobs.
+
+If I built this project again, I would plan the architecture more carefully and write isolation tests earlier in development.
+
+Next, I want to learn more about scaling multi-tenant applications, production deployment, background jobs and security.
