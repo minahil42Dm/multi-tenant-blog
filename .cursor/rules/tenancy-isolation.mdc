@@ -1,0 +1,50 @@
+---
+description: Strict tenant data isolation rules for stancl/tenancy multi-database setup
+alwaysApply: true
+---
+
+# Multi-tenancy and data isolation
+
+Each tenant has its own database (`tenant{tenant-id}`). The central database holds only
+platform data. Isolation bugs are the highest-severity bugs in this project.
+
+## Prohibited
+
+- **Accessing tenant data before tenancy is initialized.** `Writer` and `Post` throw in
+  `getConnectionName()` when `tenancy()->initialized` is false. Never weaken that check,
+  never query `users`/`posts` tenant tables via `DB::` in central context.
+- **Cross-tenant database or file access.** Never build a connection to another tenant's
+  database, call `DB::connection('tenant')` outside an active tenant, or read/write another
+  tenant's `storage/tenant{id}` folder or `covers/{otherTenantId}/` paths.
+- **Tenant-specific records in the central database.** Writers, posts, and cover images
+  belong in the tenant database/storage. Do not add tenant tables or `tenant_id` columns
+  to central tables to "simplify" queries.
+- **Running tenant migrations against the central database.** Tenant migrations live only in
+  `database/migrations/tenant` and run through tenancy (`TenantCreated` pipeline or
+  `php artisan tenants:migrate`). Never run `php artisan migrate --path=database/migrations/tenant`,
+  and never put tenant tables in `database/migrations/`.
+
+## Central vs tenant data
+
+- Central DB: `tenants` (branding in the `data` JSON: `name`, `brand_color`, `logo`),
+  `domains`, central `users` (admins via `is_admin`), `sessions`, `cache`, `jobs`, `password_reset_tokens`.
+- Tenant DB: writer `users` and `posts`.
+- `Tenant`, `Domain`, and `User` always use the central connection (`CentralConnection`).
+
+## Running code for a tenant
+
+```php
+// ✅ Iterate tenants centrally, query tenant models only inside run()
+Tenant::query()->each(fn (Tenant $tenant) => $tenant->run(function () {
+    Post::query()->dueForPublishing()->pluck('id')->each(
+        fn (int $id) => PublishScheduledPost::dispatch($id)
+    );
+}));
+
+// ❌ Returning a PendingDispatch from run() dispatches after tenancy ends
+$tenant->run(fn () => PublishScheduledPost::dispatch($id));
+```
+
+- Create tenants only with `Tenant::create([...])` + `createDomain()` so the database is provisioned
+  and migrated. Never `CREATE DATABASE` manually.
+- Never delete tenants or tenant databases outside an explicit, requested admin action.

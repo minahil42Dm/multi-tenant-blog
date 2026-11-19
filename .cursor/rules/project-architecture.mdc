@@ -1,0 +1,35 @@
+---
+description: Technology stack, layout, and routing structure of the multi-tenant blog
+alwaysApply: true
+---
+
+# Project architecture
+
+## Stack (do not change major versions)
+
+- PHP 8.4, Laravel 11 (locked 11.57.1). Do not use Laravel 12/13-only APIs.
+- stancl/tenancy `^3.8` (locked 3.10.1), multi-database, tenants identified by domain.
+- Inertia 2 + React 18 in plain JSX (no TypeScript), Breeze scaffolding, Tailwind 3, Vite 5.
+- PHPUnit 10 (not Pest). MySQL 8.0+ locally; SQLite `:memory:` in tests.
+
+## Where things live
+
+- Central routes: `routes/web.php`, wrapped in `Route::domain('{centralDomain}')`.
+  Central domains are listed in `config/tenancy.php` (`127.0.0.1`, `localhost`, `blogs.test`).
+- Tenant routes: `routes/tenant.php`, middleware order
+  `web`, `InitializeTenancyByDomain`, `PreventAccessFromCentralDomains`, `ScopeSessions`, `UseWriterGuard`.
+- Tenant writer routes for `posts/{post}` use `->whereNumber('post')` so the public
+  `posts/{slug}` route (`blog.show`) stays reachable. Keep that ordering and constraint.
+- Central models: `App\Models\Tenant`, `App\Models\User`, stancl `Domain`.
+- Tenant models: `App\Models\Writer` (table `users`), `App\Models\Post`.
+- Tenant-aware helpers: `app/Support/TenantCoverImage.php`, `TenantBranding.php`, `HomepageCache.php`.
+- Scheduled publishing: `app/Console/Commands/PublishDuePosts.php` (`posts:publish-due`, every minute in
+  `routes/console.php`) and `app/Jobs/PublishScheduledPost.php`.
+- Pages: `resources/js/Pages/{Admin,Writer,Blog}`; layouts in `resources/js/Layouts`.
+
+## Conventions
+
+- Validate in Form Requests (`app/Http/Requests`), authorize with policies (`PostPolicy` is
+  registered in `AppServiceProvider` via `Gate::policy`).
+- Vite assets use `global_asset()` (set in `AppServiceProvider`) so tenant domains load `/build` correctly.
+- Prefer extending existing helpers over adding parallel ones.

@@ -1,0 +1,41 @@
+---
+description: Central admin versus tenant writer authentication and authorization
+globs: app/Http/**/*.php,app/Models/**/*.php,app/Policies/**/*.php,app/Providers/**/*.php,routes/**/*.php,config/auth.php,bootstrap/app.php
+alwaysApply: false
+---
+
+# Central admin vs tenant writer auth
+
+Two separate account types. They must never authenticate against each other's tables.
+
+| | Central admin | Tenant writer |
+| --- | --- | --- |
+| Guard / provider | `web` / `users` | `writer` / `writers` |
+| Model / DB | `App\Models\User`, central DB | `App\Models\Writer`, tenant DB `users` |
+| Login | `{centralDomain}/login` | `{tenant-domain}/login` (`writer.login`) |
+| Protection | `auth`, `verified`, `admin` | `auth:writer` |
+
+## Rules
+
+- Do not point both providers at the same model, and do not add `is_admin` to tenant users.
+- `is_admin` is not fillable. Grant admin only via `php artisan admin:promote {email} {--force}`
+  (`app/Console/Commands/PromoteAdministrator.php`); do not change that command's behavior.
+- Public registration must never create an admin.
+- `UseWriterGuard` calls `Auth::shouldUse('writer')` after tenancy is initialized.
+  Writer login uses `Auth::guard('writer')` in `App\Http\Requests\Writer\LoginRequest`.
+- `TenancyServiceProvider` captures the central guard at boot and restores it on `terminating`.
+  Do not read `config('auth.defaults.guard')` inside that callback (it is `writer` by then).
+- `bootstrap/app.php` redirects guests/users to `writer.*` routes when tenancy is initialized,
+  otherwise to central routes.
+
+## Authorization and mass assignment
+
+- Post ownership is enforced by `PostPolicy` (update/delete only when `user_id` matches).
+  Always call `$this->authorize(...)` in writer controllers.
+- `Post::$fillable` excludes `user_id` and `cover_image`. Set them server-side:
+
+```php
+$post = new Post($this->attributes($request));
+$post->user_id = $request->user('writer')->id; // ✅ never from request input
+$post->cover_image = TenantCoverImage::sync($request, null);
+```

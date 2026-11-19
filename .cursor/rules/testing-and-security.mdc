@@ -1,0 +1,47 @@
+---
+description: Testing requirements and security expectations for features and fixes
+globs: tests/**/*.php,phpunit.xml,app/**/*.php,routes/**/*.php
+alwaysApply: false
+---
+
+# Testing and security
+
+## Test setup
+
+- PHPUnit feature tests in `tests/Feature`. `phpunit.xml` uses SQLite `:memory:`, array cache,
+  sync queue, array session. Do not change those values or point tests at MySQL.
+- Never run tests, seeders, or `migrate:fresh` against the local MySQL `multi_tenant_blog` unless asked.
+- Tenant test pattern:
+
+```php
+use RefreshDatabase;
+
+protected function tearDown(): void
+{
+    if (tenancy()->initialized) {
+        tenancy()->end();
+    }
+    Tenant::query()->get()->each(fn (Tenant $tenant) => $tenant->delete());
+    parent::tearDown();
+}
+```
+
+- Use hosts like `http://alpha.localhost` / `http://beta.localhost`; central checks use `http://localhost`.
+- Use `$this->withoutVite()` for Inertia page tests; use `Post::forceCreate` to set `user_id` in fixtures.
+- Cross-tenant session tests must replay the real session cookie; call `flushSession()` before
+  requesting a second tenant host in the same test.
+
+## Every feature or fix must
+
+- Add isolation tests (tenant A cannot read or change tenant B's data, files, cache, or jobs)
+  and authorization tests (guests, other writers, non-admins).
+- Keep `php artisan test` and `npm run build` passing. Never weaken checks to make a test pass.
+
+## Security expectations
+
+- Validate server-side in Form Requests; enforce ownership with policies.
+- Unpublished or missing posts return 404 publicly; drafts have null `published_at`,
+  scheduled posts require a future date.
+- Uploads: JPEG/PNG/WebP, max 2 MB, generated filenames, tenant-scoped paths, no traversal.
+- Branding colors must match `/^#[0-9a-f]{6}$/`; invalid values fall back to defaults.
+- Never commit `.env`, credentials, tenant uploads (`storage/tenant*/`), or tenant DB files.
