@@ -106,13 +106,18 @@ class PostController extends Controller
         $validated = $request->validated();
         $status = $validated['status'];
 
-        return [
+        $attributes = [
             'title' => $validated['title'],
-            'slug' => Post::uniqueSlug($validated['title'], $post?->id),
             'body' => $validated['body'],
             'status' => $status,
             'published_at' => $status === 'draft' ? null : $validated['published_at'],
         ];
+
+        if ($post === null) {
+            $attributes['slug'] = Post::uniqueSlug($validated['title']);
+        }
+
+        return $attributes;
     }
 
     /**
