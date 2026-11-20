@@ -171,7 +171,7 @@ A writer account works only on the tenant domain where it was created. Central a
 
 Writers manage posts at `http://{tenant-domain}/posts`.
 
-- Every writer can view the tenant's posts, but only the author can edit or delete a post.
+- Writers can view their own posts in any status and other writers' posts only once they are publicly published. Only the author can edit or delete a post.
 - Slugs are generated from the title and are unique within the tenant.
 - New posts default to **draft**.
 

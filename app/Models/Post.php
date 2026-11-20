@@ -53,6 +53,20 @@ class Post extends Model
             ->where('published_at', '<=', now());
     }
 
+    public function scopeVisibleToWriter(Builder $query, Writer $writer): Builder
+    {
+        return $query->where(fn (Builder $query) => $query
+            ->where('user_id', $writer->id)
+            ->orWhere(fn (Builder $query) => $query->published()));
+    }
+
+    public function isPublished(): bool
+    {
+        return $this->status === 'published'
+            && $this->published_at !== null
+            && ! $this->published_at->isFuture();
+    }
+
     public function scopeDueForPublishing(Builder $query): Builder
     {
         return $query
