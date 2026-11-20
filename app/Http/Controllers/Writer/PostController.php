@@ -16,9 +16,11 @@ class PostController extends Controller
     use AuthorizesRequests;
     public function index(): Response
     {
-        $writerId = (int) auth('writer')->id();
+        $writer = auth('writer')->user();
+        $writerId = (int) $writer->id;
 
         $posts = Post::query()
+            ->visibleToWriter($writer)
             ->with('writer:id,name')
             ->latest()
             ->get()
