@@ -43,13 +43,16 @@ export default function Index({ tenants }) {
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                                         Posts
                                     </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                        Writers
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200 bg-white">
                                 {tenants.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan="3"
+                                            colSpan="4"
                                             className="px-6 py-4 text-sm text-gray-500"
                                         >
                                             No tenants yet.
@@ -66,6 +69,17 @@ export default function Index({ tenants }) {
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-900">
                                             {tenant.post_count}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm">
+                                            <Link
+                                                href={route(
+                                                    'admin.tenants.writers.create',
+                                                    tenant.id,
+                                                )}
+                                                className="text-indigo-600 underline hover:text-indigo-800"
+                                            >
+                                                Add writer
+                                            </Link>
                                         </td>
                                     </tr>
                                 ))}

@@ -1,13 +1,13 @@
 # Multi-tenant blog
 
-A white-label, multi-tenant blogging platform built with Laravel 11 and stancl/tenancy ^3.8. A central administrator creates tenant blogs from `blogs.test`. Each tenant is served on its own subdomain, such as `acme.blogs.test`, with its own name, logo, brand color, and MySQL database. Writers sign up on their tenant's domain and publish posts that only that tenant's visitors can see.
+A white-label, multi-tenant blogging platform built with Laravel 11 and stancl/tenancy ^3.8. A central administrator creates tenant blogs from `blogs.test`. Each tenant is served on its own subdomain, such as `acme.blogs.test`, with its own name, logo, brand color, and MySQL database. Verified central administrators create each tenant's writers. Writers sign in on their tenant's domain and publish posts that only that tenant's visitors can see.
 
 ## Features
 
 - Central administration on `blogs.test`, with admin-only tenant management.
 - One MySQL database per tenant, created and migrated automatically when the tenant is created.
 - Separate authentication for central users and tenant writers.
-- Writer registration and login on each tenant domain.
+- Writer accounts created by central administrators, with writer login on each tenant domain.
 - Post management for writers: create, view, edit, and delete their own posts.
 - Draft, scheduled, and published post statuses.
 - Scheduled publishing through the Laravel scheduler and a queued job.
@@ -159,9 +159,16 @@ Then link the domain in Herd (see above) and open the blog at `http://acme.blogs
 
 ## Tenant writers
 
-Writers belong to a single tenant and are stored in that tenant's database.
+Writers belong to a single tenant and are stored in that tenant's database. There is no public writer registration. A verified central administrator creates each writer:
 
-- Register at `http://{tenant-domain}/register`.
+1. Open `http://blogs.test/admin/tenants`.
+2. Find the tenant and click **Add writer**.
+3. Enter the writer's name, email, and password, then confirm the password.
+
+The writer is created in that tenant's database only. An email can be used once per tenant, and the same email can exist in different tenants. Share the password with the writer securely.
+
+Writers then use their tenant's domain:
+
 - Sign in at `http://{tenant-domain}/login`.
 - The writer dashboard is at `http://{tenant-domain}/dashboard`.
 

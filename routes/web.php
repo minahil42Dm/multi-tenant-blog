@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\TenantController;
+use App\Http\Controllers\Admin\WriterController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -37,6 +38,8 @@ Route::domain('{centralDomain}')
             Route::get('/tenants', [TenantController::class, 'index'])->name('tenants.index');
             Route::get('/tenants/create', [TenantController::class, 'create'])->name('tenants.create');
             Route::post('/tenants', [TenantController::class, 'store'])->name('tenants.store');
+            Route::get('/tenants/{tenant}/writers/create', [WriterController::class, 'create'])->name('tenants.writers.create');
+            Route::post('/tenants/{tenant}/writers', [WriterController::class, 'store'])->name('tenants.writers.store');
         });
 
         require __DIR__.'/auth.php';
