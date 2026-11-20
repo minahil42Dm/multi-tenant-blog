@@ -133,6 +133,51 @@ class PublicBlogTest extends TestCase
         $this->get('http://alpha.localhost/posts/missing-post')->assertNotFound();
     }
 
+    public function test_published_posts_are_public_only_once_their_publication_date_arrives(): void
+    {
+        $this->freezeTime(function () {
+            $this->travelTo('2026-11-19 12:00:00');
+
+            $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+            $writer = $tenant->run(fn () => Writer::create([
+                'name' => 'Ada Writer',
+                'email' => 'ada@alpha.test',
+                'password' => 'password',
+            ]));
+
+            $tenant->run(function () use ($writer) {
+                $this->makePost($writer, 'Past story', 'past-story', 'Past.', 'published', '2026-11-18 09:00:00');
+                $this->makePost($writer, 'Now story', 'now-story', 'Now.', 'published', '2026-11-19 12:00:00');
+                $this->makePost($writer, 'Future story', 'future-story', 'Future.', 'published', '2026-11-19 12:30:00');
+            });
+
+            $tenant->run(fn () => $this->assertSame(
+                ['now-story', 'past-story'],
+                Post::query()->published()->orderByDesc('published_at')->pluck('slug')->all()
+            ));
+
+            $this->get('http://alpha.localhost/')
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->has('posts', 2)
+                    ->where('posts.0.slug', 'now-story')
+                    ->where('posts.1.slug', 'past-story'));
+
+            $this->get('http://alpha.localhost/posts/past-story')->assertOk();
+            $this->get('http://alpha.localhost/posts/now-story')->assertOk();
+            $this->get('http://alpha.localhost/posts/future-story')->assertNotFound();
+
+            $this->travelTo('2026-11-19 12:30:00');
+
+            $this->get('http://alpha.localhost/posts/future-story')->assertOk();
+            $this->get('http://alpha.localhost/')
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->has('posts', 3)
+                    ->where('posts.0.slug', 'future-story'));
+        });
+    }
+
     public function test_a_tenant_cannot_display_another_tenants_post(): void
     {
         $alpha = $this->createTenant('alpha.localhost', 'Alpha');
