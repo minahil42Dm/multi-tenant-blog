@@ -3,7 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\URL;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -39,6 +42,49 @@ class AdminAuthorizationTest extends TestCase
         $this->actingAs($user)->get(route('admin.tenants.index'))->assertForbidden();
         $this->actingAs($user)->get(route('admin.tenants.create'))->assertForbidden();
         $this->actingAs($user)->post(route('admin.tenants.store'))->assertForbidden();
+    }
+
+    public function test_unverified_admins_cannot_access_admin_routes(): void
+    {
+        $admin = User::factory()->admin()->unverified()->create();
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))->assertRedirect(route('verification.notice'));
+        $this->actingAs($admin)->get(route('admin.tenants.index'))->assertRedirect(route('verification.notice'));
+        $this->actingAs($admin)->get(route('admin.tenants.create'))->assertRedirect(route('verification.notice'));
+        $this->actingAs($admin)->post(route('admin.tenants.store'))->assertRedirect(route('verification.notice'));
+    }
+
+    public function test_admin_gains_access_after_verifying_their_email(): void
+    {
+        $admin = User::factory()->admin()->unverified()->create();
+
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(60),
+            ['id' => $admin->id, 'hash' => sha1($admin->email)]
+        );
+
+        $this->actingAs($admin)->get($verificationUrl);
+
+        $this->assertTrue($admin->fresh()->hasVerifiedEmail());
+        $this->actingAs($admin->fresh())->get(route('admin.dashboard'))->assertOk();
+    }
+
+    public function test_registration_sends_an_email_verification_notification(): void
+    {
+        Notification::fake();
+
+        $this->post('/register', [
+            'name' => 'New User',
+            'email' => 'new@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ]);
+
+        $user = User::query()->where('email', 'new@example.com')->firstOrFail();
+
+        $this->assertFalse($user->hasVerifiedEmail());
+        Notification::assertSentTo($user, VerifyEmail::class);
     }
 
     public function test_admin_users_can_access_admin_routes(): void
