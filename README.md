@@ -181,7 +181,7 @@ Writers manage posts at `http://{tenant-domain}/posts`.
 | --------- | ------------------------------- | ----------------------------------------- |
 | Draft     | Cleared                         | No                                        |
 | Scheduled | Required, must be in the future | Only after the scheduled job publishes it |
-| Published | Required, any valid date        | Yes                                       |
+| Published | Required, any valid date        | Yes, once the publish date has arrived    |
 
 ### Cover images
 
@@ -191,13 +191,13 @@ Covers are optional, in JPEG, PNG, or WebP format, up to 2 MB. They are stored u
 
 - `http://{tenant-domain}/` lists published posts with an excerpt, and cover image and branding when available.
 - `http://{tenant-domain}/posts/{slug}` shows a single published post.
-- Drafts, scheduled posts, and other tenants' posts return 404.
+- Drafts, scheduled posts, published posts dated in the future, and other tenants' posts return 404.
 
 ## Tenant branding and homepage cache
 
 The name, logo path, and brand color entered when the tenant is created are stored in the central tenant record. The public blog layout, homepage, and post pages use them for the blog title, logo, and accent color. An invalid or missing color falls back to `#1d4ed8`, and a missing name falls back to `Blog`. A logo appears only if its file exists in `storage/app/public/tenant-logos/`.
 
-The public homepage post list is cached for one hour under the key `blog.homepage`. The tenant cache prefix (`tenant_{id}_`) gives each tenant its own copy. Creating, updating, or deleting a post clears that tenant's cache, and so does the scheduled publish job. Other tenants' caches are not affected.
+The public homepage post list is cached for up to one hour under the key `blog.homepage`. If a published post is dated in the future, the cache expires when that date arrives. The tenant cache prefix (`tenant_{id}_`) gives each tenant its own copy. Creating, updating, or deleting a post clears that tenant's cache, and so does the scheduled publish job. Other tenants' caches are not affected.
 
 ## Scheduler and queue worker
 
