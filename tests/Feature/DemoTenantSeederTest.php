@@ -6,6 +6,7 @@ use App\Models\Post;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Writer;
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoTenantSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -112,6 +113,23 @@ class DemoTenantSeederTest extends TestCase
             $this->assertSame(4, Post::query()->count());
             $this->assertSame(1, Post::query()->where('slug', 'first-edition')->count());
         });
+    }
+
+    public function test_database_seeder_runs_the_demo_tenant_seeder_idempotently(): void
+    {
+        $this->seed();
+        $this->seed(DatabaseSeeder::class);
+
+        $this->assertSame(1, User::query()->where('email', 'test@example.com')->count());
+        $this->assertSame(2, Tenant::query()->count());
+        $this->assertSame(2, Domain::query()->count());
+
+        foreach (['harbor.blogs.test', 'pine.blogs.test'] as $domain) {
+            $this->tenant($domain)->run(function () {
+                $this->assertSame(1, Writer::query()->count());
+                $this->assertSame(4, Post::query()->count());
+            });
+        }
     }
 
     public function test_demo_seeder_preserves_existing_tenants_and_central_admins(): void

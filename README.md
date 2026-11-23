@@ -230,6 +230,8 @@ From the project directory:
 php artisan db:seed --class=DemoTenantSeeder
 ```
 
+`php artisan db:seed` also runs it, after creating the `test@example.com` central user if that user does not exist yet.
+
 These credentials are for local development only.
 
 | Blog           | Domain            | Writer email             | Password |
