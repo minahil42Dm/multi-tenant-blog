@@ -212,6 +212,114 @@ class WriterPostTest extends TestCase
         $tenant->run(fn () => $this->assertSame('Owned', $post->fresh()->title));
     }
 
+    public function test_writers_can_only_view_their_own_drafts(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        [$owner, $other, $draft, $published] = $tenant->run(function () {
+            $owner = Writer::create([
+                'name' => 'Owner',
+                'email' => 'owner@alpha.test',
+                'password' => 'password',
+            ]);
+            $other = Writer::create([
+                'name' => 'Other',
+                'email' => 'other@alpha.test',
+                'password' => 'password',
+            ]);
+            $draft = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Private draft',
+                'slug' => 'private-draft',
+                'body' => 'Draft body',
+                'status' => 'draft',
+            ]);
+            $published = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Public story',
+                'slug' => 'public-story',
+                'body' => 'Published body',
+                'status' => 'published',
+                'published_at' => '2026-11-18 09:00:00',
+            ]);
+
+            return [$owner, $other, $draft, $published];
+        });
+
+        $this->actingAs($owner, 'writer')
+            ->get('http://alpha.localhost/posts/'.$draft->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Writer/Posts/Show')
+                ->where('post.title', 'Private draft'));
+
+        $this->actingAs($owner, 'writer')
+            ->get('http://alpha.localhost/posts')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->has('posts', 2));
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$draft->id)
+            ->assertForbidden();
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$published->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Writer/Posts/Show')
+                ->where('post.title', 'Public story'));
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('posts', 1)
+                ->where('posts.0.title', 'Public story')
+                ->where('posts.0.can_manage', false));
+    }
+
+    public function test_writers_cannot_view_another_writers_future_dated_post(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        [$other, $post] = $tenant->run(function () {
+            $owner = Writer::create([
+                'name' => 'Owner',
+                'email' => 'owner@alpha.test',
+                'password' => 'password',
+            ]);
+            $other = Writer::create([
+                'name' => 'Other',
+                'email' => 'other@alpha.test',
+                'password' => 'password',
+            ]);
+            $post = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Embargoed',
+                'slug' => 'embargoed',
+                'body' => 'Not yet',
+                'status' => 'published',
+                'published_at' => '2026-11-20 09:00:00',
+            ]);
+
+            return [$other, $post];
+        });
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$post->id)
+            ->assertForbidden();
+
+        $this->travelTo('2026-11-20 09:00:00');
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$post->id)
+            ->assertOk();
+    }
+
     public function test_invalid_post_data_is_rejected(): void
     {
         $tenant = $this->createTenant('alpha.localhost', 'Alpha');
