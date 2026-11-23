@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
+use Stancl\Tenancy\Exceptions\TenantDatabaseDoesNotExistException;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 use Stancl\Tenancy\Middleware\ScopeSessions;
@@ -166,6 +168,105 @@ class TenantInfrastructureTest extends TestCase
         $this->withCookie($cookie->getName(), $cookie->getValue())
             ->get('http://beta.localhost/session-check')
             ->assertForbidden();
+    }
+
+    public function test_tenant_run_restores_the_central_context_when_the_callback_throws(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+        $centralConnection = config('database.default');
+
+        try {
+            $tenant->run(function () {
+                throw new RuntimeException('callback failed');
+            });
+
+            $this->fail('The callback exception was swallowed.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('callback failed', $exception->getMessage());
+        }
+
+        $this->assertFalse(tenancy()->initialized);
+        $this->assertSame($centralConnection, config('database.default'));
+    }
+
+    public function test_tenant_run_restores_the_outer_tenant_when_a_nested_callback_throws(): void
+    {
+        $outer = $this->createTenant('alpha.localhost', 'Alpha');
+        $inner = $this->createTenant('beta.localhost', 'Beta');
+
+        $outer->run(function () use ($inner, $outer) {
+            try {
+                $inner->run(function () {
+                    throw new RuntimeException('nested callback failed');
+                });
+            } catch (RuntimeException) {
+                //
+            }
+
+            $this->assertTrue(tenancy()->initialized);
+            $this->assertSame($outer->getTenantKey(), tenant('id'));
+        });
+
+        $this->assertFalse(tenancy()->initialized);
+    }
+
+    public function test_tenant_run_restores_the_central_context_when_initialization_fails(): void
+    {
+        $broken = $this->createTenantWithoutDatabase('alpha.localhost', 'Alpha');
+        $centralConnection = config('database.default');
+        $centralStoragePath = storage_path();
+        $centralCachePrefix = config('cache.prefix');
+
+        try {
+            $broken->run(fn () => $this->fail('The callback ran without a tenant database.'));
+
+            $this->fail('The initialization exception was swallowed.');
+        } catch (TenantDatabaseDoesNotExistException) {
+            //
+        }
+
+        $this->assertFalse(tenancy()->initialized);
+        $this->assertNull(tenant());
+        $this->assertSame($centralConnection, config('database.default'));
+        $this->assertSame($centralStoragePath, storage_path());
+        $this->assertSame($centralCachePrefix, config('cache.prefix'));
+    }
+
+    public function test_tenant_run_restores_the_outer_tenant_when_nested_initialization_fails(): void
+    {
+        $outer = $this->createTenant('alpha.localhost', 'Alpha');
+        $broken = $this->createTenantWithoutDatabase('beta.localhost', 'Beta');
+
+        $outer->run(function () use ($outer, $broken) {
+            try {
+                $broken->run(fn () => $this->fail('The callback ran without a tenant database.'));
+
+                $this->fail('The initialization exception was swallowed.');
+            } catch (TenantDatabaseDoesNotExistException) {
+                //
+            }
+
+            $this->assertTrue(tenancy()->initialized);
+            $this->assertSame($outer->getTenantKey(), tenant('id'));
+            $this->assertSame('tenant', config('database.default'));
+            $this->assertStringContainsString($outer->database()->getName(), DB::connection()->getDatabaseName());
+            $this->assertTrue(Schema::hasTable('posts'));
+        });
+
+        $this->assertFalse(tenancy()->initialized);
+    }
+
+    private function createTenantWithoutDatabase(string $domain, string $name): Tenant
+    {
+        $tenant = $this->createTenant($domain, $name);
+
+        $tenant->database()->manager()->deleteDatabase($tenant);
+        $this->assertFalse($tenant->database()->manager()->databaseExists($tenant->database()->getName()));
+
+        // DatabaseTenancyBootstrapper only verifies that the tenant database exists in the local environment.
+        $this->app['env'] = 'local';
+
+        return $tenant;
     }
 
     private function createTenant(string $domain, string $name): Tenant

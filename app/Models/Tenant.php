@@ -19,4 +19,27 @@ class Tenant extends BaseTenant implements TenantWithDatabase
             'updated_at',
         ];
     }
+
+    /**
+     * Stancl's TenantRun::run() skips restoring the previous context when initialization
+     * or the callback throws. Initialization can fail after tenancy is marked initialized.
+     *
+     * @return mixed
+     */
+    public function run(callable $callback)
+    {
+        $originalTenant = tenant();
+
+        try {
+            tenancy()->initialize($this);
+
+            return $callback($this);
+        } finally {
+            if ($originalTenant) {
+                tenancy()->initialize($originalTenant);
+            } else {
+                tenancy()->end();
+            }
+        }
+    }
 }

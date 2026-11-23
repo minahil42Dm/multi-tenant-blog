@@ -134,7 +134,8 @@ Tenant logos are served from `/storage/...`. Herd serves that path from `storage
     php artisan admin:promote you@example.com --force
     ```
 
-3. Sign in at `http://blogs.test/login` and open `http://blogs.test/admin`.
+3. Verify the account's email address. Admin pages require a verified email, and unverified administrators are redirected to the verification page. Locally, mail uses the `log` driver, so the verification link is written to `storage/logs/laravel.log`. If you promote an account before verifying it, sign in and use the link from that log file.
+4. Sign in at `http://blogs.test/login` and open `http://blogs.test/admin`.
 
 Public registration never creates an administrator.
 
