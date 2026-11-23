@@ -6,7 +6,6 @@ use App\Http\Controllers\BlogController;
 use App\Http\Controllers\Writer\AuthenticatedSessionController;
 use App\Http\Controllers\Writer\DashboardController;
 use App\Http\Controllers\Writer\PostController;
-use App\Http\Controllers\Writer\RegisteredUserController;
 use App\Http\Middleware\UseWriterGuard;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
@@ -35,8 +34,6 @@ Route::middleware([
     Route::get('/', [BlogController::class, 'index'])->name('blog.home');
 
     Route::middleware('guest:writer')->group(function () {
-        Route::get('/register', [RegisteredUserController::class, 'create'])->name('writer.register');
-        Route::post('/register', [RegisteredUserController::class, 'store']);
         Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('writer.login');
         Route::post('/login', [AuthenticatedSessionController::class, 'store']);
     });
