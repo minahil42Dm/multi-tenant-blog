@@ -1,0 +1,29 @@
+---
+description: Conventional Commit message format and commit workflow; apply whenever creating or proposing git commits
+alwaysApply: false
+---
+
+# Conventional Commits
+
+Format: `type(scope): description`
+
+- **type** (one, lowercase): `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `style`, `build`, `ci`
+- **scope**: always required, short, lowercase kebab-case (e.g. `tenancy`, `posts`, `auth`, `ci`)
+- **description**: short, clear, lowercase, no trailing punctuation, one logical change
+
+```text
+✅ feat(posts): add scheduled publishing job
+✅ fix(tenancy): pin central user model to central connection
+✅ ci(github): run tests and build on pull requests
+❌ feat: implement stuff            (missing scope)
+❌ Fix(Posts): Added Things.         (uppercase, past tense, punctuation)
+❌ feat(posts): add covers and fix ci (two unrelated changes)
+```
+
+## Workflow
+
+1. Inspect `git status` and `git diff` before committing.
+2. Stage only the intended files; split unrelated changes into separate commits.
+3. Never stage `.env`, secrets, `vendor/`, `node_modules/`, or tenant data.
+4. Never add `Co-Authored-By` or AI-attribution lines.
+5. Only commit or push when explicitly asked, and confirm success from git output.

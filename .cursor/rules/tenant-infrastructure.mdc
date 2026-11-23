@@ -1,0 +1,45 @@
+---
+description: Tenant-aware migrations, cache, queue, sessions, and file storage configuration
+globs: config/**/*.php,database/**/*.php,app/Jobs/**/*.php,app/Console/**/*.php,app/Support/**/*.php,app/Bootstrappers/**/*.php,app/Providers/TenancyServiceProvider.php,routes/console.php
+alwaysApply: false
+---
+
+# Tenant infrastructure
+
+Bootstrappers in `config/tenancy.php`: `DatabaseTenancyBootstrapper`,
+`App\Bootstrappers\PrefixCacheTenancyBootstrapper`, `FilesystemTenancyBootstrapper`,
+`QueueTenancyBootstrapper`.
+
+## Migrations
+
+- Central: `database/migrations/*.php` via `php artisan migrate`.
+- Tenant: `database/migrations/tenant/*.php`, run by the `TenantCreated` pipeline
+  (`CreateDatabase`, `MigrateDatabase`) or `php artisan tenants:migrate`.
+- Do not edit existing migrations; add new ones. Never `migrate:fresh` on `multi_tenant_blog`.
+
+## Sessions
+
+- Stored on the central connection (`config/session.php` falls back to `DB_CONNECTION`).
+- `ScopeSessions` binds a session to one tenant; reuse on another domain returns 403.
+
+## Cache
+
+- `PrefixCacheTenancyBootstrapper` prefixes keys with `tenant_{id}_`. Do not add a second prefix
+  and do not enable `CacheTenancyBootstrapper` (the database cache store cannot tag).
+- `HomepageCache::KEY` is `blog.homepage`; `HomepageCache::forget()` clears only the current tenant.
+
+## Queue
+
+- Database queue on the central connection; `QueueTenancyBootstrapper` adds `tenant_id` to payloads.
+  Never set `central => true` on the queue connection.
+- Tenant jobs must carry their tenant id and refuse to run for another tenant, like
+  `PublishScheduledPost` (`$tenantId` set in the constructor, tenancy ended if the job started it).
+- Herd does not run workers: use `php artisan schedule:work` and `php artisan queue:work`.
+
+## File storage
+
+- During tenancy `storage_path()` becomes `storage/tenant{id}` and the `public`/`local` disks are re-rooted.
+- Cover images: only via `TenantCoverImage` (`covers/{tenantId}/{generatedName}`, served by
+  `tenant_asset()` at `/tenancy/assets/...`). Never accept a client-supplied path.
+- Central logos (`tenant-logos/...`) are written before `Tenant::create` and read via
+  `base_path('storage/app/public/...')`. Do not use `Storage::disk('public')` for them during tenancy.
