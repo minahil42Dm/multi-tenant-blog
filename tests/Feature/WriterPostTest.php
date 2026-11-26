@@ -212,6 +212,173 @@ class WriterPostTest extends TestCase
         $tenant->run(fn () => $this->assertSame('Owned', $post->fresh()->title));
     }
 
+    public function test_writers_can_only_view_their_own_drafts(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        [$owner, $other, $draft, $published] = $tenant->run(function () {
+            $owner = Writer::create([
+                'name' => 'Owner',
+                'email' => 'owner@alpha.test',
+                'password' => 'password',
+            ]);
+            $other = Writer::create([
+                'name' => 'Other',
+                'email' => 'other@alpha.test',
+                'password' => 'password',
+            ]);
+            $draft = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Private draft',
+                'slug' => 'private-draft',
+                'body' => 'Draft body',
+                'status' => 'draft',
+            ]);
+            $published = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Public story',
+                'slug' => 'public-story',
+                'body' => 'Published body',
+                'status' => 'published',
+                'published_at' => '2026-11-18 09:00:00',
+            ]);
+
+            return [$owner, $other, $draft, $published];
+        });
+
+        $this->actingAs($owner, 'writer')
+            ->get('http://alpha.localhost/posts/'.$draft->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Writer/Posts/Show')
+                ->where('post.title', 'Private draft'));
+
+        $this->actingAs($owner, 'writer')
+            ->get('http://alpha.localhost/posts')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->has('posts', 2));
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$draft->id)
+            ->assertForbidden();
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$published->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Writer/Posts/Show')
+                ->where('post.title', 'Public story'));
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('posts', 1)
+                ->where('posts.0.title', 'Public story')
+                ->where('posts.0.can_manage', false));
+    }
+
+    public function test_writers_cannot_view_another_writers_future_dated_post(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        [$other, $post] = $tenant->run(function () {
+            $owner = Writer::create([
+                'name' => 'Owner',
+                'email' => 'owner@alpha.test',
+                'password' => 'password',
+            ]);
+            $other = Writer::create([
+                'name' => 'Other',
+                'email' => 'other@alpha.test',
+                'password' => 'password',
+            ]);
+            $post = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Embargoed',
+                'slug' => 'embargoed',
+                'body' => 'Not yet',
+                'status' => 'published',
+                'published_at' => '2026-11-20 09:00:00',
+            ]);
+
+            return [$other, $post];
+        });
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$post->id)
+            ->assertForbidden();
+
+        $this->travelTo('2026-11-20 09:00:00');
+
+        $this->actingAs($other, 'writer')
+            ->get('http://alpha.localhost/posts/'.$post->id)
+            ->assertOk();
+    }
+
+    public function test_updating_the_title_keeps_the_existing_slug(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+        $writer = $tenant->run(fn () => Writer::create([
+            'name' => 'Ada Writer',
+            'email' => 'ada@alpha.test',
+            'password' => 'password',
+        ]));
+
+        $this->actingAs($writer, 'writer')
+            ->post('http://alpha.localhost/posts', [
+                'title' => 'Original Title',
+                'body' => 'Body',
+                'status' => 'draft',
+            ])
+            ->assertRedirect();
+
+        $post = $tenant->run(fn () => Post::query()->firstOrFail());
+        $this->assertSame('original-title', $post->slug);
+
+        $this->actingAs($writer, 'writer')
+            ->put('http://alpha.localhost/posts/'.$post->id, [
+                'title' => 'A Completely New Title',
+                'body' => 'Body of the retitled post',
+                'status' => 'published',
+                'published_at' => '2026-11-18 09:00:00',
+            ])
+            ->assertRedirect();
+
+        $tenant->run(function () use ($post) {
+            $post->refresh();
+            $this->assertSame('A Completely New Title', $post->title);
+            $this->assertSame('original-title', $post->slug);
+        });
+
+        $this->get('http://alpha.localhost/posts/original-title')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Blog/Show')
+                ->where('post.slug', 'original-title')
+                ->where('post.title', 'A Completely New Title')
+                ->where('post.body', 'Body of the retitled post'));
+
+        $this->actingAs($writer, 'writer')
+            ->post('http://alpha.localhost/posts', [
+                'title' => 'Original Title',
+                'body' => 'Another body',
+                'status' => 'draft',
+            ])
+            ->assertRedirect();
+
+        $tenant->run(fn () => $this->assertSame(
+            'original-title-2',
+            Post::query()->whereKeyNot($post->id)->firstOrFail()->slug
+        ));
+    }
+
     public function test_invalid_post_data_is_rejected(): void
     {
         $tenant = $this->createTenant('alpha.localhost', 'Alpha');

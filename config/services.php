@@ -31,4 +31,10 @@ return [
         ],
     ],
 
+    'herd' => [
+        'link_tenant_domains' => (bool) env('HERD_LINK_TENANT_DOMAINS', env('APP_ENV') === 'local'),
+        'binary' => env('HERD_BINARY', 'herd'),
+        'tld' => env('HERD_TLD', 'test'),
+    ],
+
 ];

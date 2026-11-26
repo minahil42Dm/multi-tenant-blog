@@ -18,7 +18,9 @@ platform data. Isolation bugs are the highest-severity bugs in this project.
   tenant's `storage/tenant{id}` folder or `covers/{otherTenantId}/` paths.
 - **Tenant-specific records in the central database.** Writers, posts, and cover images
   belong in the tenant database/storage. Do not add tenant tables or `tenant_id` columns
-  to central tables to "simplify" queries.
+  to central tables to "simplify" queries. The only central tables with `tenant_id` are platform
+  metadata: stancl's `domains` and `tenant_user_impersonation_tokens`, and `audit_logs` (no FK, so history
+  survives tenant deletion). They never hold tenant content.
 - **Running tenant migrations against the central database.** Tenant migrations live only in
   `database/migrations/tenant` and run through tenancy (`TenantCreated` pipeline or
   `php artisan tenants:migrate`). Never run `php artisan migrate --path=database/migrations/tenant`,
@@ -26,10 +28,13 @@ platform data. Isolation bugs are the highest-severity bugs in this project.
 
 ## Central vs tenant data
 
-- Central DB: `tenants` (branding in the `data` JSON: `name`, `brand_color`, `logo`),
-  `domains`, central `users` (admins via `is_admin`), `sessions`, `cache`, `jobs`, `password_reset_tokens`.
-- Tenant DB: writer `users` and `posts`.
-- `Tenant`, `Domain`, and `User` always use the central connection (`CentralConnection`).
+- Central DB: `tenants` (branding in the `data` JSON: `name`, `brand_color`, `logo`; plus `status`),
+  `domains` (`is_primary`), central `users` (admins via `role`: `super_admin` or `support`), `sessions`, `cache`, `jobs`,
+  `password_reset_tokens`, `tenant_user_impersonation_tokens`, `audit_logs`.
+- Tenant DB: tenant `users` (`role`: `admin` or `writer`) and `posts`.
+- `Tenant`, `Domain`, `User`, `AuditLog` and `ImpersonationToken` always use the central connection (`CentralConnection`).
+- Impersonation state lives only in the tenant domain's session and is bound to the tenant id. Re-put
+  `ScopeSessions::$tenantIdKey` after any `session()->invalidate()` that is followed by a login.
 
 ## Running code for a tenant
 
@@ -45,6 +50,7 @@ Tenant::query()->each(fn (Tenant $tenant) => $tenant->run(function () {
 $tenant->run(fn () => PublishScheduledPost::dispatch($id));
 ```
 
-- Create tenants only with `Tenant::create([...])` + `createDomain()` so the database is provisioned
-  and migrated. Never `CREATE DATABASE` manually.
-- Never delete tenants or tenant databases outside an explicit, requested admin action.
+- Create tenants only with `Tenant::create([...])` + `createDomain()` (or `TenantLifecycle::provision()`, which
+  wraps them with rollback) so the database is provisioned and migrated. Never `CREATE DATABASE` manually.
+- Never delete tenants or tenant databases outside an explicit, requested admin action. The admin action
+  uses `TenantLifecycle::delete()`, which goes through the stancl `TenantDeleted` pipeline.

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -32,6 +33,7 @@ class TenantManagementTest extends TestCase
                 }
 
                 $tenant->delete();
+                File::deleteDirectory(storage_path('tenant'.$tenant->id));
             });
         }
 
@@ -87,6 +89,10 @@ class TenantManagementTest extends TestCase
             'domain' => 'acme.localhost',
             'brand_color' => '#1D4ED8',
             'logo' => UploadedFile::fake()->image('logo.png'),
+            'admin_name' => 'Acme Admin',
+            'admin_email' => 'admin@acme.test',
+            'admin_password' => 'secret-password',
+            'admin_password_confirmation' => 'secret-password',
         ]);
 
         $response->assertRedirect(route('admin.tenants.index'));
@@ -96,8 +102,9 @@ class TenantManagementTest extends TestCase
         $this->assertNotNull($tenant);
         $this->assertSame('Acme Blog', $tenant->name);
         $this->assertSame('#1d4ed8', $tenant->brand_color);
-        $this->assertNotNull($tenant->logo);
-        Storage::disk('public')->assertExists($tenant->logo);
+        $this->assertStringStartsWith('branding/'.$tenant->id.'/', $tenant->logo);
+        Storage::disk('public')->assertMissing($tenant->logo);
+        $tenant->run(fn () => Storage::disk('public')->assertExists($tenant->logo));
         $this->assertDatabaseHas('domains', [
             'domain' => 'acme.localhost',
             'tenant_id' => $tenant->id,
@@ -141,6 +148,12 @@ class TenantManagementTest extends TestCase
                 ->has('tenants', 1)
                 ->where('tenants.0.name', 'Acme Blog')
                 ->where('tenants.0.domain', 'acme.localhost')
-                ->where('tenants.0.post_count', 1));
+                ->where('tenants.0.post_count', 1)
+                ->where('tenants.0.writer_count', 2));
+
+        $tenant->run(fn () => $this->assertSame(
+            'admin',
+            DB::table('users')->where('email', 'admin@acme.test')->value('role'),
+        ));
     }
 }

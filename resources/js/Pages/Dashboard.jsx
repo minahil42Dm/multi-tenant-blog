@@ -2,7 +2,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage } from '@inertiajs/react';
 
 export default function Dashboard() {
-    const user = usePage().props.auth.user;
+    const { can } = usePage().props.auth;
 
     return (
         <AuthenticatedLayout
@@ -19,7 +19,7 @@ export default function Dashboard() {
                     <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
                         <div className="p-6 text-gray-900">
                             You're logged in!
-                            {user.is_admin && (
+                            {can?.accessAdmin && (
                                 <Link
                                     href={route('admin.dashboard')}
                                     className="ms-2 text-sm text-gray-600 underline"

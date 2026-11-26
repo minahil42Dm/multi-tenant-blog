@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Http\Middleware\EnsureTenantIsActive;
+use App\Http\Middleware\UseWriterGuard;
+use App\Listeners\SyncHerdSites;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Queue\Queue;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Stancl\JobPipeline\JobPipeline;
+use Stancl\Tenancy\Controllers\TenantAssetsController;
 use Stancl\Tenancy\Events;
 use Stancl\Tenancy\Jobs;
 use Stancl\Tenancy\Listeners;
@@ -42,7 +48,9 @@ class TenancyServiceProvider extends ServiceProvider
             Events\TenantSaved::class => [],
             Events\UpdatingTenant::class => [],
             Events\TenantUpdated::class => [],
-            Events\DeletingTenant::class => [],
+            Events\DeletingTenant::class => [
+                [SyncHerdSites::class, 'unlinkTenantDomains'],
+            ],
             Events\TenantDeleted::class => [
                 JobPipeline::make([
                     Jobs\DeleteDatabase::class,
@@ -53,13 +61,17 @@ class TenancyServiceProvider extends ServiceProvider
 
             // Domain events
             Events\CreatingDomain::class => [],
-            Events\DomainCreated::class => [],
+            Events\DomainCreated::class => [
+                [SyncHerdSites::class, 'linkDomain'],
+            ],
             Events\SavingDomain::class => [],
             Events\DomainSaved::class => [],
             Events\UpdatingDomain::class => [],
             Events\DomainUpdated::class => [],
             Events\DeletingDomain::class => [],
-            Events\DomainDeleted::class => [],
+            Events\DomainDeleted::class => [
+                [SyncHerdSites::class, 'unlinkDomain'],
+            ],
 
             // Database events
             Events\DatabaseCreated::class => [],
@@ -103,6 +115,7 @@ class TenancyServiceProvider extends ServiceProvider
     {
         $this->bootEvents();
         $this->mapRoutes();
+        $this->protectTenantAssets();
         $this->makeTenancyMiddlewareHighestPriority();
         $this->registerTenantQueuePayload();
 
@@ -157,6 +170,14 @@ class TenancyServiceProvider extends ServiceProvider
         });
     }
 
+    protected function protectTenantAssets(): void
+    {
+        TenantAssetsController::$tenancyMiddleware = [
+            Middleware\InitializeTenancyByDomain::class,
+            EnsureTenantIsActive::class,
+        ];
+    }
+
     protected function makeTenancyMiddlewareHighestPriority()
     {
         $tenancyMiddleware = [
@@ -170,20 +191,25 @@ class TenancyServiceProvider extends ServiceProvider
             Middleware\InitializeTenancyByRequestData::class,
         ];
 
-        $kernel = $this->app[\Illuminate\Contracts\Http\Kernel::class];
+        $kernel = $this->app[Kernel::class];
 
         foreach (array_reverse($tenancyMiddleware) as $middleware) {
             $kernel->prependToMiddlewarePriority($middleware);
         }
 
         $kernel->addToMiddlewarePriorityAfter(
-            \Illuminate\Session\Middleware\StartSession::class,
+            StartSession::class,
             Middleware\ScopeSessions::class,
         );
 
         $kernel->addToMiddlewarePriorityAfter(
             Middleware\ScopeSessions::class,
-            \App\Http\Middleware\UseWriterGuard::class,
+            EnsureTenantIsActive::class,
+        );
+
+        $kernel->addToMiddlewarePriorityAfter(
+            EnsureTenantIsActive::class,
+            UseWriterGuard::class,
         );
     }
 }

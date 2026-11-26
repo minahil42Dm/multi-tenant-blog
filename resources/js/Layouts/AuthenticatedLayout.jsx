@@ -6,7 +6,7 @@ import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
 export default function AuthenticatedLayout({ header, children }) {
-    const user = usePage().props.auth.user;
+    const { user, can } = usePage().props.auth;
 
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
@@ -30,7 +30,15 @@ export default function AuthenticatedLayout({ header, children }) {
                                 >
                                     Dashboard
                                 </NavLink>
-                                {user.is_admin && (
+                                {can?.accessAdmin && (
+                                    <NavLink
+                                        href={route('admin.dashboard')}
+                                        active={route().current('admin.dashboard')}
+                                    >
+                                        Central admin
+                                    </NavLink>
+                                )}
+                                {can?.viewTenants && (
                                     <NavLink
                                         href={route('admin.tenants.index')}
                                         active={route().current('admin.tenants.*')}
@@ -142,7 +150,15 @@ export default function AuthenticatedLayout({ header, children }) {
                         >
                             Dashboard
                         </ResponsiveNavLink>
-                        {user.is_admin && (
+                        {can?.accessAdmin && (
+                            <ResponsiveNavLink
+                                href={route('admin.dashboard')}
+                                active={route().current('admin.dashboard')}
+                            >
+                                Central admin
+                            </ResponsiveNavLink>
+                        )}
+                        {can?.viewTenants && (
                             <ResponsiveNavLink
                                 href={route('admin.tenants.index')}
                                 active={route().current('admin.tenants.*')}

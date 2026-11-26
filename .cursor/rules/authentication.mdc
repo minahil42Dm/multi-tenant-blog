@@ -13,14 +13,29 @@ Two separate account types. They must never authenticate against each other's ta
 | Guard / provider | `web` / `users` | `writer` / `writers` |
 | Model / DB | `App\Models\User`, central DB | `App\Models\Writer`, tenant DB `users` |
 | Login | `{centralDomain}/login` | `{tenant-domain}/login` (`writer.login`) |
-| Protection | `auth`, `verified`, `admin` | `auth:writer` |
+| Protection | `auth`, `verified`, `admin`, then `can:` per route | `auth:writer` |
+
+## Central roles
+
+- Central users have a nullable `role` (`App\Enums\CentralRole`): `super_admin` or `support`.
+  `null` means an ordinary central account with no admin access. The old `is_admin` column is gone;
+  never reintroduce it.
+- Abilities live in one place, `App\Support\CentralAbility` (Gates registered in `AppServiceProvider`):
+  - `super_admin`: every ability.
+  - `support`: `ACCESS_ADMIN`, `VIEW_TENANTS`, `VIEW_TENANT_USERS`, `IMPERSONATE_TENANT_USERS` only.
+    Support must never create, edit, suspend, reactivate or delete tenants or tenant users.
+- Every new admin route sits in the `auth`, `verified`, `admin` group and adds a `can:` middleware
+  for the narrowest ability. Form requests check the same ability in `authorize()`.
+  Hiding a button in React is not authorization.
+- Add new abilities to `CentralAbility::roles()` and `CentralAbility::for()` (shared to React as `auth.can`).
 
 ## Rules
 
-- Do not point both providers at the same model, and do not add `is_admin` to tenant users.
-- `is_admin` is not fillable. Grant admin only via `php artisan admin:promote {email} {--force}`
-  (`app/Console/Commands/PromoteAdministrator.php`); do not change that command's behavior.
-- Public registration must never create an admin.
+- Do not point both providers at the same model, and do not add central roles to tenant users.
+- `role` is not fillable. Grant it only via `php artisan admin:promote {email} {--role=} {--force}`
+  (`app/Console/Commands/PromoteAdministrator.php`). Keep its safeguard: it refuses when another user
+  already has a central role unless `--force` is passed.
+- Public registration and profile updates must never set a central role.
 - `UseWriterGuard` calls `Auth::shouldUse('writer')` after tenancy is initialized.
   Writer login uses `Auth::guard('writer')` in `App\Http\Requests\Writer\LoginRequest`.
 - `TenancyServiceProvider` captures the central guard at boot and restores it on `terminating`.

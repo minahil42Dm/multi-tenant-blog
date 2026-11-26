@@ -73,7 +73,7 @@ class TenantSecurityAuditTest extends TestCase
             $this->assertFalse(User::query()->where('email', 'writer@alpha.test')->exists());
             $this->assertSame(0, Writer::query()->where('email', 'admin@central.test')->count());
             $this->assertSame(0, Writer::query()->where('email', 'created-during-tenancy@central.test')->count());
-            $this->assertTrue($admin->fresh()->is_admin);
+            $this->assertTrue($admin->fresh()->isSuperAdmin());
         });
 
         $this->assertNotNull(User::query()->where('email', 'created-during-tenancy@central.test')->first());

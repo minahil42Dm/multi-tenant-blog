@@ -35,45 +35,58 @@ class WriterAuthenticationTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_writer_can_register_and_log_in_on_their_tenant_domain(): void
+    public function test_tenant_registration_page_is_not_available(): void
+    {
+        $this->createTenant('alpha.localhost', 'Alpha');
+
+        $this->get('http://alpha.localhost/register')->assertNotFound();
+    }
+
+    public function test_posting_to_the_old_registration_endpoint_does_not_create_a_writer(): void
     {
         $tenant = $this->createTenant('alpha.localhost', 'Alpha');
-        $other = $this->createTenant('beta.localhost', 'Beta');
 
-        $this->post('http://alpha.localhost/register', [
+        $response = $this->post('http://alpha.localhost/register', [
             'name' => 'Ada Writer',
             'email' => 'ada@alpha.test',
             'password' => 'password',
             'password_confirmation' => 'password',
-            'is_admin' => true,
-        ])->assertRedirect(route('writer.dashboard', absolute: false));
+        ]);
 
-        $this->assertAuthenticated('writer');
-        $this->assertGuest('web');
+        $this->assertContains($response->getStatusCode(), [404, 405]);
+        $this->assertGuest('writer');
 
         $tenant->run(function () {
-            $writer = Writer::query()->where('email', 'ada@alpha.test')->first();
-
-            $this->assertNotNull($writer);
-            $this->assertSame('Ada Writer', $writer->name);
-            $this->assertFalse(Schema::hasColumn('users', 'is_admin'));
-        });
-
-        $other->run(function () {
             $this->assertSame(0, DB::table('users')->count());
         });
 
         $this->assertNull(User::query()->where('email', 'ada@alpha.test')->first());
+    }
 
-        $this->post('http://alpha.localhost/logout')
-            ->assertRedirect(route('writer.login', absolute: false));
+    public function test_writer_login_page_does_not_offer_registration(): void
+    {
+        $this->createTenant('alpha.localhost', 'Alpha');
 
-        $this->assertGuest('writer');
+        $this->get('http://alpha.localhost/login')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Writer/Auth/Login'));
+
+        $this->assertFalse(app('router')->has('writer.register'));
+    }
+
+    public function test_provisioned_writer_can_log_in_and_out_on_their_tenant_domain(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        $this->provisionWriter($tenant, 'ada@alpha.test', 'Ada Writer');
 
         $this->post('http://alpha.localhost/login', [
             'email' => 'ada@alpha.test',
             'password' => 'password',
         ])->assertRedirect(route('writer.dashboard', absolute: false));
+
+        $this->assertAuthenticated('writer');
+        $this->assertGuest('web');
 
         $this->get('http://alpha.localhost/dashboard')
             ->assertOk()
@@ -81,6 +94,11 @@ class WriterAuthenticationTest extends TestCase
                 ->component('Writer/Dashboard')
                 ->where('tenantName', 'Alpha')
                 ->where('auth.user.email', 'ada@alpha.test'));
+
+        $this->post('http://alpha.localhost/logout')
+            ->assertRedirect(route('writer.login', absolute: false));
+
+        $this->assertGuest('writer');
     }
 
     public function test_guests_cannot_access_the_writer_dashboard(): void
@@ -93,17 +111,10 @@ class WriterAuthenticationTest extends TestCase
 
     public function test_writer_cannot_authenticate_on_another_tenant_domain(): void
     {
-        $this->createTenant('alpha.localhost', 'Alpha');
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
         $other = $this->createTenant('beta.localhost', 'Beta');
 
-        $this->post('http://alpha.localhost/register', [
-            'name' => 'Ada Writer',
-            'email' => 'ada@alpha.test',
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ])->assertRedirect(route('writer.dashboard', absolute: false));
-
-        $this->post('http://alpha.localhost/logout');
+        $this->provisionWriter($tenant, 'ada@alpha.test');
 
         $this->post('http://beta.localhost/login', [
             'email' => 'ada@alpha.test',
@@ -119,15 +130,10 @@ class WriterAuthenticationTest extends TestCase
 
     public function test_writer_cannot_access_another_tenants_dashboard(): void
     {
-        $this->createTenant('alpha.localhost', 'Alpha');
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
         $this->createTenant('beta.localhost', 'Beta');
 
-        $this->post('http://alpha.localhost/register', [
-            'name' => 'Ada Writer',
-            'email' => 'ada@alpha.test',
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ])->assertRedirect(route('writer.dashboard', absolute: false));
+        $this->provisionWriter($tenant, 'ada@alpha.test');
 
         $cookie = collect($this->post('http://alpha.localhost/login', [
             'email' => 'ada@alpha.test',
@@ -146,16 +152,9 @@ class WriterAuthenticationTest extends TestCase
 
     public function test_writer_cannot_use_central_admin_login(): void
     {
-        $this->createTenant('alpha.localhost', 'Alpha');
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
 
-        $this->post('http://alpha.localhost/register', [
-            'name' => 'Ada Writer',
-            'email' => 'ada@alpha.test',
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ]);
-
-        $this->post('http://alpha.localhost/logout');
+        $this->provisionWriter($tenant, 'ada@alpha.test');
 
         $this->post('http://localhost/login', [
             'email' => 'ada@alpha.test',
@@ -197,12 +196,13 @@ class WriterAuthenticationTest extends TestCase
             'password' => 'password',
             'password_confirmation' => 'password',
             'is_admin' => true,
+            'role' => 'super_admin',
         ])->assertRedirect(route('dashboard', absolute: false));
 
         $user = User::query()->where('email', 'public@central.test')->first();
 
         $this->assertNotNull($user);
-        $this->assertFalse($user->is_admin);
+        $this->assertNull($user->role);
         $this->assertAuthenticatedAs($user, 'web');
         $this->assertGuest('writer');
     }
@@ -216,5 +216,15 @@ class WriterAuthenticationTest extends TestCase
         $tenant->createDomain($domain);
 
         return $tenant;
+    }
+
+    private function provisionWriter(Tenant $tenant, string $email, string $name = 'Writer'): void
+    {
+        $tenant->run(function () use ($email, $name) {
+            Writer::factory()->create([
+                'name' => $name,
+                'email' => $email,
+            ]);
+        });
     }
 }
