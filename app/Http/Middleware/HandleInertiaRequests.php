@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\CentralAbility;
+use App\Support\Impersonation;
+use App\Support\TenantBranding;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,12 +38,26 @@ class HandleInertiaRequests extends Middleware
                 'user' => tenancy()->initialized
                     ? $request->user('writer')
                     : $request->user(),
+                'can' => fn () => tenancy()->initialized
+                    ? []
+                    : CentralAbility::for($request->user('web')),
             ],
             'tenant' => fn () => tenancy()->initialized ? [
                 'name' => tenant('name'),
             ] : null,
+            'branding' => fn () => tenancy()->initialized ? TenantBranding::current() : null,
+            'impersonation' => function () use ($request) {
+                $details = Impersonation::details($request);
+
+                return $details === null ? null : [
+                    'writer_name' => $details['writer_name'],
+                    'writer_email' => $details['writer_email'],
+                    'impersonator_email' => $details['impersonator_email'],
+                ];
+            },
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
             ],
         ];
     }

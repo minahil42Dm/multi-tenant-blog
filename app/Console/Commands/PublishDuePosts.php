@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\TenantStatus;
 use App\Jobs\PublishScheduledPost;
 use App\Models\Post;
 use App\Models\Tenant;
@@ -15,7 +16,7 @@ class PublishDuePosts extends Command
 
     public function handle(): int
     {
-        Tenant::query()->orderBy('id')->each(function (Tenant $tenant): void {
+        Tenant::query()->withStatus(TenantStatus::Active)->orderBy('id')->each(function (Tenant $tenant): void {
             $tenant->run(function (): void {
                 Post::query()
                     ->dueForPublishing()

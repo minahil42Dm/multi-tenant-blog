@@ -1,13 +1,13 @@
 # Multi-tenant blog
 
-A white-label, multi-tenant blogging platform built with Laravel 11 and stancl/tenancy ^3.8. A central administrator creates tenant blogs from `blogs.test`. Each tenant is served on its own subdomain, such as `acme.blogs.test`, with its own name, logo, brand color, and MySQL database. Writers sign up on their tenant's domain and publish posts that only that tenant's visitors can see.
+A white-label, multi-tenant blogging platform built with Laravel 11 and stancl/tenancy ^3.8. A central administrator creates tenant blogs from `blogs.test`. Each tenant is served on its own subdomain, such as `acme.blogs.test`, with its own name, logo, brand color, and MySQL database. Verified central administrators create each tenant's writers. Writers sign in on their tenant's domain and publish posts that only that tenant's visitors can see.
 
 ## Features
 
-- Central administration on `blogs.test`, with admin-only tenant management.
+- Central administration on `blogs.test`, with super admin and read-only support roles.
 - One MySQL database per tenant, created and migrated automatically when the tenant is created.
 - Separate authentication for central users and tenant writers.
-- Writer registration and login on each tenant domain.
+- Writer accounts created by central administrators, with writer login on each tenant domain.
 - Post management for writers: create, view, edit, and delete their own posts.
 - Draft, scheduled, and published post statuses.
 - Scheduled publishing through the Laravel scheduler and a queued job.
@@ -76,11 +76,20 @@ Create the central database `multi_tenant_blog` in MySQL, then run the central m
 php artisan migrate
 ```
 
-This creates the central tables, including users, tenants, domains, sessions, cache, and jobs. Tenant tables live in `database/migrations/tenant` and run automatically for each new tenant. If you add tenant migrations later, apply them to existing tenants with:
+This creates the central tables, including users, tenants, domains, sessions, cache, jobs, impersonation tokens and the audit log. Tenant tables live in `database/migrations/tenant` and run automatically for each new tenant. If you add tenant migrations later, apply them to existing tenants with:
 
 ```bash
 php artisan tenants:migrate
 ```
+
+Upgrading an existing installation to the tenant lifecycle, domain management and impersonation features needs both commands, in this order:
+
+```bash
+php artisan migrate          # tenant status, primary domains, impersonation tokens, audit log
+php artisan tenants:migrate  # adds the role column to every tenant's users table
+```
+
+The primary-domain migration marks each tenant's oldest domain as primary. Existing writers get the `writer` role; none become tenant admins.
 
 Build the frontend assets:
 
@@ -92,7 +101,7 @@ During development you can run `npm run dev` instead.
 
 ## Laravel Herd and domains
 
-The central domains are configured in `config/tenancy.php`: `127.0.0.1`, `localhost`, and `blogs.test`. The central admin app runs on `http://blogs.test`.
+The central domains are configured in `config/tenancy.php`: `127.0.0.1`, `localhost`, `blogs.test` and `platform.test`. The central admin app runs on `http://blogs.test`. `platform.test` is reserved for platform subdomains such as `acme.platform.test`; to use it locally, run `herd link platform` and link each tenant subdomain the same way as below (`herd link acme.platform`). Central domains can never be assigned to a tenant.
 
 From the project directory, link the central site:
 
@@ -121,47 +130,98 @@ Tenant logos are served from `/storage/...`. Herd serves that path from `storage
 
 ## Central administrator
 
+Central users can hold one of two roles, stored in the non-fillable `role` column of the central `users` table:
+
+| Role | Access |
+| --- | --- |
+| `super_admin` | Full central access: create, edit, suspend, reactivate and delete tenants, manage domains and writers, and impersonate any tenant user. |
+| `support` | Read-only: view tenants and their users, and impersonate regular writers (not tenant admins). Every create, edit, suspend, reactivate, delete and domain change returns 403. |
+
+Central users without a role can sign in, but every `/admin` page returns 403.
+
 1. Register a central account at `http://blogs.test/register`.
-2. Promote it to administrator from the project directory:
+2. Grant it a role from the project directory. The default role is `super_admin`:
 
     ```bash
     php artisan admin:promote you@example.com
+    php artisan admin:promote agent@example.com --role=support --force
     ```
 
-    The command only promotes an existing central user. If another administrator already exists, it refuses unless you add `--force`:
+    The command only changes an existing central user. If another user already has a central role, it refuses unless you add `--force`.
 
-    ```bash
-    php artisan admin:promote you@example.com --force
-    ```
-
-3. Sign in at `http://blogs.test/login` and open `http://blogs.test/admin`.
+3. Verify the account's email address. Admin pages require a verified email, and unverified administrators are redirected to the verification page. Locally, mail uses the `log` driver, so the verification link is written to `storage/logs/laravel.log`. If you promote an account before verifying it, sign in and use the link from that log file.
+4. Sign in at `http://blogs.test/login` and open `http://blogs.test/admin`.
 
 Public registration never creates an administrator.
 
+Authorization lives in `App\Support\CentralAbility`, which defines one Gate per central ability (`central.view-tenants`, `central.manage-tenants`, `central.view-tenant-users`, `central.manage-tenant-users`, `central.impersonate-tenant-users`). Admin routes use `can:` middleware, so a manually typed URL gets the same 403 as a hidden button. The same abilities are shared with React as `auth.can` to show or hide links.
+
+Upgrading an existing installation: run `php artisan migrate`. The `replace_is_admin_with_role_on_users_table` migration turns every existing administrator into a `super_admin` and removes the old `is_admin` column.
+
 ## Creating tenants
 
-As an administrator, open `http://blogs.test/admin/tenants/create` and fill in:
+As a super admin, open `http://blogs.test/admin/tenants/create`. The wizard has four steps, and each step is validated on the server before you can continue. You can go back to earlier steps without losing what you entered.
 
-- **Name**: the blog name shown on the public site.
-- **Domain**: for example `acme.blogs.test`. It must be unique and cannot be a central domain.
-- **Brand color**: a hex color such as `#1d4ed8`.
-- **Logo**: a JPEG, PNG, or WebP image up to 2 MB.
+1. **Details**: the blog name shown on the public site.
+2. **Domains**: a primary domain such as `acme.blogs.test` and up to five additional domains. Domains are lowercased, must be valid hostnames, must not be IP addresses or central domains, and must be unique across all tenants.
+3. **Branding**: a hex brand color and a JPEG, PNG, or WebP logo up to 2 MB.
+4. **Tenant admin**: the name, email and password of the tenant's first account.
 
-Saving the tenant:
+Nothing is created until the last step is valid. Creating the tenant then:
 
-- creates a database named `tenant{tenant-id}`,
-- runs the tenant migrations, and
-- stores the name, logo path, and brand color on the central tenant record.
+- creates the central tenant record and its domains (the first one primary),
+- creates and migrates a database named `tenant{tenant-id}` through the tenancy pipeline, and
+- creates the first account in that tenant database with the `admin` role.
 
-The tenant list at `http://blogs.test/admin/tenants` shows each tenant's domain, branding, and post count.
+If any part fails, the tenant, its domains, its database, its storage folder and the uploaded logo are all removed and the wizard shows an error. The new tenant admin can sign in at `http://{primary-domain}/login` straight away.
+
+The tenant list at `http://blogs.test/admin/tenants` shows each tenant's name, status, domains (primary first), user and post counts, and created date. It can be searched by name or domain, filtered by status and is paginated; the search and filter stay in the URL across pages.
 
 Then link the domain in Herd (see above) and open the blog at `http://acme.blogs.test/`.
 
+## Managing tenants
+
+Super admins manage a tenant from its detail page:
+
+- **Edit** changes the name, brand color and logo. Status is never changed by editing. A replaced logo is deleted only after the new one is saved, and only if it lives in `tenant-logos/`.
+- **Suspend / Reactivate** takes the public site and writer login offline (visitors see "This site is suspended") or brings them back.
+- **Delete** is available only for suspended tenants. A confirmation dialog shows the tenant name and ID and requires typing the primary domain. Deletion goes through the tenancy pipeline, which drops the tenant database, then removes the domains, logo and `storage/tenant{id}` folder. If the database cannot be dropped, the error says so and the failure is recorded in the audit log for manual cleanup.
+
+### Domains
+
+A tenant can have one primary domain and any number of additional domains: platform subdomains (`acme.platform.test`, `acme.blogs.test`) or custom domains (`blog.acme.com`). Every domain serves the same tenant. The primary domain is used for links, the writer login hint and impersonation.
+
+From **Edit**, super admins can add a domain, make a domain primary, or remove a non-primary domain. A tenant always keeps at least one domain and exactly one primary. Primary changes and removals run in a database transaction with the tenant's domain rows locked.
+
+For a domain to actually reach the platform:
+
+- **Platform subdomains** need a wildcard DNS record (`*.platform.example A <server-ip>`) and a wildcard TLS certificate for `*.platform.example`. Locally, Herd needs one `herd link` per subdomain.
+- **Custom domains** need the customer to point their DNS at the platform (a `CNAME` to the platform host, or an `A` record to its IP) before the domain is added, and a TLS certificate issued for that exact hostname (for example through Let's Encrypt with on-demand issuance). Until both exist the domain is stored but will not load in a browser.
+
+## Impersonation
+
+Super admins and support can sign in as a tenant user to see exactly what they see. Open a tenant's **Users** page and click **Impersonate**.
+
+- A single-use token is created in `tenant_user_impersonation_tokens` (stancl's `ImpersonationToken` model). It expires after `UserImpersonation::$ttl` seconds (60).
+- The token is posted to `http://{primary-domain}/impersonate` in a form body, so it never appears in a URL, browser history, server logs or client-side storage. The tenant consumes it atomically before trusting it.
+- The tenant checks the token's tenant, guard, age, target user and the impersonator's current permissions, then starts a fresh session bound to that tenant.
+- A banner shows who is being impersonated and by whom, with a **Stop impersonating** button. Stopping (or logging out) ends the tenant session and returns to the central writers page. The central admin session is never touched, because session cookies are host-only.
+- Support cannot impersonate tenant admins. Nested impersonation is refused, suspended tenants cannot be impersonated, and email and password changes are blocked for the whole impersonated session.
+
+Starting and stopping impersonation, tenant creation, edits, status changes, deletions and domain changes are written to the central `audit_logs` table with the acting user, tenant ID, IP address and details. Audit entries are kept when a tenant is deleted.
+
 ## Tenant writers
 
-Writers belong to a single tenant and are stored in that tenant's database.
+Writers belong to a single tenant and are stored in that tenant's database. There is no public writer registration. A verified central administrator creates each writer:
 
-- Register at `http://{tenant-domain}/register`.
+1. Open `http://blogs.test/admin/tenants`.
+2. Find the tenant and click **Add writer**.
+3. Enter the writer's name, email, and password, then confirm the password.
+
+The writer is created in that tenant's database only. An email can be used once per tenant, and the same email can exist in different tenants. Share the password with the writer securely.
+
+Writers then use their tenant's domain:
+
 - Sign in at `http://{tenant-domain}/login`.
 - The writer dashboard is at `http://{tenant-domain}/dashboard`.
 
@@ -171,8 +231,8 @@ A writer account works only on the tenant domain where it was created. Central a
 
 Writers manage posts at `http://{tenant-domain}/posts`.
 
-- Every writer can view the tenant's posts, but only the author can edit or delete a post.
-- Slugs are generated from the title and are unique within the tenant.
+- Writers can view their own posts in any status and other writers' posts only once they are publicly published. Only the author can edit or delete a post.
+- Slugs are generated from the title when the post is created and are unique within the tenant. Editing the title later does not change the slug.
 - New posts default to **draft**.
 
 ### Statuses
@@ -181,7 +241,7 @@ Writers manage posts at `http://{tenant-domain}/posts`.
 | --------- | ------------------------------- | ----------------------------------------- |
 | Draft     | Cleared                         | No                                        |
 | Scheduled | Required, must be in the future | Only after the scheduled job publishes it |
-| Published | Required, any valid date        | Yes                                       |
+| Published | Required, any valid date        | Yes, once the publish date has arrived    |
 
 ### Cover images
 
@@ -191,13 +251,13 @@ Covers are optional, in JPEG, PNG, or WebP format, up to 2 MB. They are stored u
 
 - `http://{tenant-domain}/` lists published posts with an excerpt, and cover image and branding when available.
 - `http://{tenant-domain}/posts/{slug}` shows a single published post.
-- Drafts, scheduled posts, and other tenants' posts return 404.
+- Drafts, scheduled posts, published posts dated in the future, and other tenants' posts return 404.
 
 ## Tenant branding and homepage cache
 
 The name, logo path, and brand color entered when the tenant is created are stored in the central tenant record. The public blog layout, homepage, and post pages use them for the blog title, logo, and accent color. An invalid or missing color falls back to `#1d4ed8`, and a missing name falls back to `Blog`. A logo appears only if its file exists in `storage/app/public/tenant-logos/`.
 
-The public homepage post list is cached for one hour under the key `blog.homepage`. The tenant cache prefix (`tenant_{id}_`) gives each tenant its own copy. Creating, updating, or deleting a post clears that tenant's cache, and so does the scheduled publish job. Other tenants' caches are not affected.
+The public homepage post list is cached for up to one hour under the key `blog.homepage`. If a published post is dated in the future, the cache expires when that date arrives. The tenant cache prefix (`tenant_{id}_`) gives each tenant its own copy. Creating, updating, or deleting a post clears that tenant's cache, and so does the scheduled publish job. Other tenants' caches are not affected.
 
 ## Scheduler and queue worker
 
@@ -228,6 +288,8 @@ From the project directory:
 ```bash
 php artisan db:seed --class=DemoTenantSeeder
 ```
+
+`php artisan db:seed` also runs it, after creating the `test@example.com` central user if that user does not exist yet.
 
 These credentials are for local development only.
 
@@ -273,14 +335,15 @@ GitHub Actions runs the same steps in `.github/workflows/ci.yml` on every pull r
 
 **Central database** (`multi_tenant_blog`):
 
-- central users and their `is_admin` flag
-- tenants and their domains
+- central users and their central `role` (`super_admin` or `support`)
+- tenants, their status, and their domains (with an `is_primary` flag)
 - tenant branding, stored in the tenant record's `data` JSON column
+- impersonation tokens and the audit log
 - sessions, cache entries, and queued jobs
 
 **Tenant databases** (`tenant{tenant-id}`, one per tenant):
 
-- that tenant's writers, in its own `users` table
+- that tenant's users (writers and tenant admins, by `role`), in its own `users` table
 - that tenant's posts
 
 **How a tenant request is isolated:**
@@ -321,7 +384,7 @@ Tenancy is a context that starts and ends. Inside it, the database, cache prefix
 
 ### Isolation and authorization
 
-Authentication is split into two guards: `web` for central users and `writer` for tenant writers, each with its own provider and table. Administrator access is a non-fillable `is_admin` flag, granted only through `php artisan admin:promote`. Inside a tenant, `PostPolicy` limits edit and delete to the post's author, and `user_id` and `cover_image` are set on the server, never taken from form input.
+Authentication is split into two guards: `web` for central users and `writer` for tenant writers, each with its own provider and table. Administrator access started as a non-fillable `is_admin` flag; it is now a non-fillable `role` (`super_admin` or `support`), granted only through `php artisan admin:promote`, and checked through Gates in `App\Support\CentralAbility`. Inside a tenant, `PostPolicy` limits edit and delete to the post's author, and `user_id` and `cover_image` are set on the server, never taken from form input.
 
 ### Testing and debugging
 

@@ -15,14 +15,24 @@ alwaysApply: true
 ## Where things live
 
 - Central routes: `routes/web.php`, wrapped in `Route::domain('{centralDomain}')`.
-  Central domains are listed in `config/tenancy.php` (`127.0.0.1`, `localhost`, `blogs.test`).
+  Central domains are listed in `config/tenancy.php` (`127.0.0.1`, `localhost`, `blogs.test`, `platform.test`).
 - Tenant routes: `routes/tenant.php`, middleware order
-  `web`, `InitializeTenancyByDomain`, `PreventAccessFromCentralDomains`, `ScopeSessions`, `UseWriterGuard`.
+  `web`, `InitializeTenancyByDomain`, `PreventAccessFromCentralDomains`, `ScopeSessions`, `EnsureTenantIsActive`, `UseWriterGuard`.
 - Tenant writer routes for `posts/{post}` use `->whereNumber('post')` so the public
   `posts/{slug}` route (`blog.show`) stays reachable. Keep that ordering and constraint.
-- Central models: `App\Models\Tenant`, `App\Models\User`, stancl `Domain`.
-- Tenant models: `App\Models\Writer` (table `users`), `App\Models\Post`.
+- Central models: `App\Models\Tenant`, `App\Models\User`, `App\Models\Domain` (extends stancl's, adds `is_primary`;
+  set as `tenancy.domain_model`), `App\Models\AuditLog`, stancl `ImpersonationToken`.
+- Tenant models: `App\Models\Writer` (table `users`, `role` is `TenantUserRole`: `admin` or `writer`), `App\Models\Post`.
 - Tenant-aware helpers: `app/Support/TenantCoverImage.php`, `TenantBranding.php`, `HomepageCache.php`.
+- Tenant lifecycle: `app/Support/TenantLifecycle.php` (`provision()` with rollback, `delete()` through the stancl pipeline).
+  Domain validation and normalization: `app/Support/DomainName.php`. Use `$tenant->primaryDomainName()`, never `domains->first()`.
+- Central authorization: every central ability lives in `app/Support/CentralAbility.php` and is enforced with `can:` route
+  middleware. Support is read-only plus impersonation of non-admin writers (`CentralAbility::canImpersonate`).
+- The first tenant user is created by `TenantLifecycle::provision()` as a tenant admin. `role` stays off `Writer::$fillable`
+  and is set with `forceFill`.
+- Impersonation: `Admin\ImpersonationController` issues a stancl `ImpersonationToken` and POSTs it (never in a URL) to the
+  tenant's `/impersonate` route (`Writer\ImpersonationController`), which consumes it atomically. Session state is in
+  `app/Support/Impersonation.php`. Audit every start, stop and admin mutation with `AuditLog::record()`.
 - Scheduled publishing: `app/Console/Commands/PublishDuePosts.php` (`posts:publish-due`, every minute in
   `routes/console.php`) and `app/Jobs/PublishScheduledPost.php`.
 - Pages: `resources/js/Pages/{Admin,Writer,Blog}`; layouts in `resources/js/Layouts`.

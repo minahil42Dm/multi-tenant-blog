@@ -9,7 +9,7 @@ class PostPolicy
 {
     public function view(Writer $writer, Post $post): bool
     {
-        return true;
+        return (int) $post->user_id === (int) $writer->id || $post->isPublished();
     }
 
     public function update(Writer $writer, Post $post): bool

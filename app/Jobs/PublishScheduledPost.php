@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\TenantStatus;
 use App\Models\Post;
+use App\Models\Tenant;
 use App\Support\HomepageCache;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -37,7 +39,7 @@ class PublishScheduledPost implements ShouldQueue
             $startedTenancy = true;
         }
 
-        if ((string) tenant()->getTenantKey() !== $this->tenantId) {
+        if ((string) tenant()->getTenantKey() !== $this->tenantId || ! $this->tenantIsActive()) {
             if ($startedTenancy) {
                 tenancy()->end();
             }
@@ -52,6 +54,14 @@ class PublishScheduledPost implements ShouldQueue
                 tenancy()->end();
             }
         }
+    }
+
+    private function tenantIsActive(): bool
+    {
+        return Tenant::query()
+            ->whereKey($this->tenantId)
+            ->withStatus(TenantStatus::Active)
+            ->exists();
     }
 
     private function publishDuePost(): void

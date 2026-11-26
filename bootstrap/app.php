@@ -1,8 +1,11 @@
 <?php
 
+use App\Http\Middleware\EnsureUserIsAdministrator;
+use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -16,13 +19,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ])
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
-            \App\Http\Middleware\HandleInertiaRequests::class,
-            \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
         ]);
 
         $middleware->alias([
-            'admin' => \App\Http\Middleware\EnsureUserIsAdministrator::class,
+            'admin' => EnsureUserIsAdministrator::class,
         ]);
+
+        // Tenant-domain endpoint that receives a cross-domain POST from the central admin.
+        // It authenticates with a single-use, 60-second impersonation token instead of a CSRF token.
+        $middleware->validateCsrfTokens(except: ['impersonate']);
 
         $middleware->redirectGuestsTo(function (Request $request) {
             if (tenancy()->initialized) {
