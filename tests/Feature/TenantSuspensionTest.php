@@ -298,6 +298,7 @@ class TenantSuspensionTest extends TestCase
         return array_merge([
             'name' => 'Ada Writer',
             'email' => 'ada@alpha.test',
+            'role' => 'writer',
             'password' => 'secret-password',
             'password_confirmation' => 'secret-password',
         ], $overrides);

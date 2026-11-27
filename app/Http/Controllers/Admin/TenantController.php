@@ -7,6 +7,7 @@ use App\Exceptions\TenantDeletionException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\DestroyTenantRequest;
 use App\Http\Requests\StoreTenantRequest;
+use App\Http\Requests\UpdateTenantRequest;
 use App\Http\Requests\ValidateTenantStepRequest;
 use App\Models\AuditLog;
 use App\Models\Domain;
@@ -133,6 +134,23 @@ class TenantController extends Controller
         return Inertia::render('Admin/Tenants/Edit', [
             'tenant' => $this->summary($tenant, withCounts: false),
         ]);
+    }
+
+    public function update(UpdateTenantRequest $request, string $centralDomain, Tenant $tenant): RedirectResponse
+    {
+        $previous = $tenant->name;
+        $tenant->name = $request->validated('name');
+        $tenant->save();
+        TenantBranding::forgetFor($tenant);
+
+        AuditLog::record('tenant.updated', $request->user(), (string) $tenant->getTenantKey(), [
+            'name' => $tenant->name,
+            'previous_name' => $previous,
+        ]);
+
+        return redirect()
+            ->route('admin.tenants.show', $tenant)
+            ->with('success', 'Tenant details saved.');
     }
 
     public function destroy(DestroyTenantRequest $request, string $centralDomain, Tenant $tenant): RedirectResponse

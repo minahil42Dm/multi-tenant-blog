@@ -52,6 +52,7 @@ Route::domain('{centralDomain}')
                     ->name('tenants.create.validate');
                 Route::post('/tenants', [TenantController::class, 'store'])->name('tenants.store');
                 Route::get('/tenants/{tenant}/edit', [TenantController::class, 'edit'])->name('tenants.edit');
+                Route::put('/tenants/{tenant}/details', [TenantController::class, 'update'])->name('tenants.update');
                 Route::put('/tenants/{tenant}/branding', [TenantBrandingController::class, 'update'])->name('tenants.branding.update');
                 Route::delete('/tenants/{tenant}', [TenantController::class, 'destroy'])->name('tenants.destroy');
                 Route::post('/tenants/{tenant}/suspend', [TenantController::class, 'suspend'])->name('tenants.suspend');

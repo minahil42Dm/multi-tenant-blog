@@ -19,6 +19,7 @@ export default function BlogLayout({ branding: pageBranding, children }) {
                             branding={branding}
                             style="logo_and_name"
                             logoClassName="h-10 w-10"
+                            showTagline
                         />
                     </Link>
                     <div className="flex flex-wrap items-center justify-end gap-4">

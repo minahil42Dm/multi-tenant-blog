@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\TenantUserRole;
 use App\Http\Controllers\Admin\WriterController;
 use App\Models\Tenant;
 use App\Models\Writer;
@@ -9,6 +10,7 @@ use App\Support\CentralAbility;
 use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class StoreWriterRequest extends FormRequest
@@ -51,6 +53,7 @@ class StoreWriterRequest extends FormRequest
                     }
                 },
             ],
+            'role' => ['required', Rule::enum(TenantUserRole::class)],
             'password' => ['required', 'confirmed', Password::defaults()],
         ];
     }

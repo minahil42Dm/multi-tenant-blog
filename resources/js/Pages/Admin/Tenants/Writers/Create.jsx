@@ -5,10 +5,11 @@ import TextInput from '@/Components/TextInput';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 
-export default function Create({ tenant }) {
+export default function Create({ tenant, roles }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         email: '',
+        role: 'writer',
         password: '',
         password_confirmation: '',
     });
@@ -72,6 +73,24 @@ export default function Create({ tenant }) {
                                     required
                                 />
                                 <InputError className="mt-2" message={errors.email} />
+                            </div>
+
+                            <div>
+                                <InputLabel htmlFor="role" value="Role" />
+                                <select
+                                    id="role"
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    value={data.role}
+                                    onChange={(event) => setData('role', event.target.value)}
+                                    required
+                                >
+                                    {roles.map((role) => (
+                                        <option key={role.value} value={role.value}>
+                                            {role.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError className="mt-2" message={errors.role} />
                             </div>
 
                             <div>

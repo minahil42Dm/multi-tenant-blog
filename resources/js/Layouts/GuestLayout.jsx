@@ -17,6 +17,7 @@ export default function GuestLayout({ children }) {
                             style="logo_and_name"
                             logoClassName="h-16 w-16"
                             textClassName="text-2xl"
+                            showTagline
                         />
                     </Link>
 

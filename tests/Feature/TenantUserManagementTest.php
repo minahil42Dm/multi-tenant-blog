@@ -70,7 +70,7 @@ class TenantUserManagementTest extends TestCase
         });
     }
 
-    public function test_central_writer_creation_ignores_a_submitted_role(): void
+    public function test_super_admin_can_assign_a_tenant_admin_role_when_creating_a_user(): void
     {
         $tenant = $this->createTenant('alpha.localhost', 'Alpha');
 
@@ -85,7 +85,7 @@ class TenantUserManagementTest extends TestCase
             ->assertRedirect();
 
         $tenant->run(function () {
-            $this->assertSame(TenantUserRole::Writer, Writer::query()->first()->role);
+            $this->assertSame(TenantUserRole::Admin, Writer::query()->first()->role);
         });
 
         $this->actingAs(User::factory()->support()->create())

@@ -10,6 +10,43 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
+function DetailsForm({ tenant }) {
+    const { data, setData, put, processing, errors } = useForm({
+        name: tenant.name,
+    });
+
+    const submit = (event) => {
+        event.preventDefault();
+        put(route('admin.tenants.update', tenant.id));
+    };
+
+    return (
+        <form onSubmit={submit} className="space-y-4 bg-white p-6 shadow-sm sm:rounded-lg">
+            <div>
+                <h3 className="text-lg font-medium text-gray-900">Tenant details</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                    Changing the name leaves domains, branding, status, and tenant data in place.
+                </p>
+            </div>
+            <div>
+                <InputLabel htmlFor="name" value="Name" />
+                <TextInput
+                    id="name"
+                    className="mt-1 block w-full"
+                    value={data.name}
+                    maxLength={255}
+                    required
+                    onChange={(event) => setData('name', event.target.value)}
+                />
+                <InputError message={errors.name} className="mt-2" />
+            </div>
+            <PrimaryButton disabled={processing}>
+                {processing ? 'Saving…' : 'Save details'}
+            </PrimaryButton>
+        </form>
+    );
+}
+
 function BrandingSummary({ tenant }) {
     return (
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-6 shadow-sm sm:rounded-lg">
@@ -185,6 +222,7 @@ export default function Edit({ tenant }) {
             <div className="py-12">
                 <div className="mx-auto max-w-3xl space-y-6 sm:px-6 lg:px-8">
                     <FlashMessages />
+                    <DetailsForm tenant={tenant} />
                     <BrandingSummary tenant={tenant} />
                     <DomainsSection tenant={tenant} />
                     <Link

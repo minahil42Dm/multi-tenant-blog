@@ -252,6 +252,21 @@ export default function Branding({ tenant, branding, options }) {
                                         <InputError message={errors.name} className="mt-2" />
                                     </div>
 
+                                    <div>
+                                        <InputLabel htmlFor="sidebar_tagline" value="Tagline" />
+                                        <TextInput
+                                            id="sidebar_tagline"
+                                            className="mt-1 block w-full"
+                                            value={data.sidebar_tagline}
+                                            maxLength={80}
+                                            onChange={(event) => setData('sidebar_tagline', event.target.value)}
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Shown under the tenant name on the public blog, login page, and dashboard.
+                                        </p>
+                                        <InputError message={errors.sidebar_tagline} className="mt-2" />
+                                    </div>
+
                                     <div className="grid gap-6 sm:grid-cols-2">
                                         <ColorField
                                             id="brand_color"
@@ -332,17 +347,6 @@ export default function Branding({ tenant, branding, options }) {
                                                 Without a logo, the name is always shown.
                                             </p>
                                             <InputError message={errors.sidebar_style} className="mt-2" />
-                                        </div>
-                                        <div>
-                                            <InputLabel htmlFor="sidebar_tagline" value="Navigation tagline (optional)" />
-                                            <TextInput
-                                                id="sidebar_tagline"
-                                                className="mt-1 block w-full"
-                                                value={data.sidebar_tagline}
-                                                maxLength={80}
-                                                onChange={(event) => setData('sidebar_tagline', event.target.value)}
-                                            />
-                                            <InputError message={errors.sidebar_tagline} className="mt-2" />
                                         </div>
                                     </div>
 

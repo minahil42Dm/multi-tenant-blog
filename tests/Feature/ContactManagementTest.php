@@ -47,6 +47,17 @@ class ContactManagementTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_provisioning_a_tenant_creates_the_crm_tables(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        $tenant->run(function () {
+            foreach (['contacts', 'contact_shares', 'tags', 'contact_tag', 'contact_notes', 'contact_imports'] as $table) {
+                $this->assertTrue(Schema::hasTable($table), $table);
+            }
+        });
+    }
+
     public function test_contact_records_cannot_be_queried_before_tenancy_starts(): void
     {
         $this->expectException(RuntimeException::class);

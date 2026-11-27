@@ -130,7 +130,7 @@ export default function Show({ tenant, deleteConfirmation }) {
                                     href={route('admin.tenants.edit', tenant.id)}
                                     className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-widest text-gray-700 hover:bg-gray-50"
                                 >
-                                    Edit domains
+                                    Edit tenant
                                 </Link>
                                 <TenantStatusButton tenant={tenant} redirectTo="show" />
                             </>

@@ -12,13 +12,6 @@ class UpdateTenantRequest extends FormRequest
         return $this->user()?->can(CentralAbility::MANAGE_TENANTS) === true;
     }
 
-    protected function prepareForValidation(): void
-    {
-        if ($this->has('brand_color')) {
-            $this->merge(['brand_color' => strtolower(trim($this->string('brand_color')->toString()))]);
-        }
-    }
-
     /**
      * @return array<string, mixed>
      */
@@ -26,8 +19,6 @@ class UpdateTenantRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'brand_color' => ['required', 'regex:/^#[0-9a-f]{6}$/'],
-            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }
 }

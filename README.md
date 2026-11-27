@@ -92,9 +92,9 @@ php artisan migrate          # tenant status, primary domains, impersonation tok
 php artisan tenants:migrate  # tenant user roles, then contacts, tags, notes, and imports
 ```
 
-Run `php artisan tenants:migrate` only against a development database you intend to upgrade. It alters every existing tenant database. Do not run it against a database whose tenant data you cannot replace.
+Run `php artisan tenants:migrate` only after you have confirmed `DB_DATABASE` is a database you intend to upgrade. It alters every tenant database on that connection and does not drop tables or rewrite existing users, posts, or contacts. Tenants created before the CRM migrations do not have `contacts`, `contact_shares`, `tags`, `contact_tag`, `contact_notes`, or `contact_imports` until that command runs. Fresh tenants receive those tables automatically during provisioning. Do not run the command while `DB_DATABASE` is `multi_tenant_blog` unless you have explicitly decided to upgrade those existing tenant databases.
 
-The primary-domain migration marks each tenant's oldest domain as primary. Existing writers get the `writer` role; none become tenant admins. The contact tables are created empty. Existing posts, users, and files are left in place.
+The primary-domain migration marks each tenant's oldest domain as primary. Existing writers get the `writer` role; none become tenant admins. The contact tables are created empty. Existing posts, users, and files are left in place. Creating a Tenant Admin for an existing tenant is a separate action: a Super Admin uses Add user and chooses the Tenant Admin role. That does not change accounts that already exist.
 
 Build the frontend assets:
 
