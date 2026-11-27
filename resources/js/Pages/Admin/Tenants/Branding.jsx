@@ -101,7 +101,7 @@ function Preview({ branding, faviconUrl }) {
                 style={{ borderTopColor: branding.color }}
             >
                 <TenantBrandMark branding={branding} showTagline logoClassName="h-8 w-8" textClassName="text-base" />
-                <span className="text-xs text-gray-500">Writer menu</span>
+                <span className="text-xs text-gray-500">Tenant menu</span>
             </div>
             <div className="space-y-3 p-4">
                 <p className="text-lg font-semibold" style={{ color: branding.color }}>
@@ -132,6 +132,7 @@ export default function Branding({ tenant, branding, options }) {
         support_email: branding.support_email ?? '',
         sidebar_style: branding.sidebar_style,
         sidebar_tagline: branding.sidebar_tagline ?? '',
+        sidebar_links: branding.sidebar_links ?? [],
         footer_links: branding.footer_links,
         logo: null,
         favicon: null,
@@ -150,6 +151,7 @@ export default function Branding({ tenant, branding, options }) {
             support_email: data.support_email,
             sidebar_style: data.sidebar_style,
             sidebar_tagline: data.sidebar_tagline,
+            sidebar_links: data.sidebar_links,
             footer_links: data.footer_links,
         }),
         [data, logoPreview, branding.logo_url],
@@ -162,6 +164,39 @@ export default function Branding({ tenant, branding, options }) {
             'footer_links',
             data.footer_links.map((link, i) => (i === index ? { ...link, [field]: value } : link)),
         );
+
+    const moveFooterLink = (index, direction) => {
+        const next = index + direction;
+
+        if (next < 0 || next >= data.footer_links.length) {
+            return;
+        }
+
+        const links = [...data.footer_links];
+        [links[index], links[next]] = [links[next], links[index]];
+        setData('footer_links', links);
+    };
+
+    const updateSidebarLink = (index, field, value) =>
+        setData(
+            'sidebar_links',
+            data.sidebar_links.map((link, i) => (i === index ? { ...link, [field]: value } : link)),
+        );
+
+    const moveSidebarLink = (index, direction) => {
+        const next = index + direction;
+
+        if (next < 0 || next >= data.sidebar_links.length) {
+            return;
+        }
+
+        const links = [...data.sidebar_links];
+        [links[index], links[next]] = [links[next], links[index]];
+        setData(
+            'sidebar_links',
+            links.map((link, order) => ({ ...link, order })),
+        );
+    };
 
     const submit = (event) => {
         event.preventDefault();
@@ -312,6 +347,72 @@ export default function Branding({ tenant, branding, options }) {
                                     </div>
 
                                     <div>
+                                        <InputLabel value="Sidebar links" />
+                                        <div className="mt-2 space-y-3">
+                                            {data.sidebar_links.length === 0 && (
+                                                <p className="text-sm text-gray-500">No custom navigation links.</p>
+                                            )}
+                                            {data.sidebar_links.map((link, index) => (
+                                                <div key={index}>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <TextInput
+                                                            aria-label={`Sidebar link ${index + 1} label`}
+                                                            className="w-36"
+                                                            placeholder="Label"
+                                                            value={link.label}
+                                                            maxLength={40}
+                                                            onChange={(event) => updateSidebarLink(index, 'label', event.target.value)}
+                                                        />
+                                                        <TextInput
+                                                            aria-label={`Sidebar link ${index + 1} URL`}
+                                                            className="min-w-40 flex-1"
+                                                            placeholder="https://example.com"
+                                                            value={link.url}
+                                                            maxLength={2048}
+                                                            onChange={(event) => updateSidebarLink(index, 'url', event.target.value)}
+                                                        />
+                                                        <select
+                                                            aria-label={`Sidebar link ${index + 1} icon`}
+                                                            value={link.icon || 'link'}
+                                                            onChange={(event) => updateSidebarLink(index, 'icon', event.target.value)}
+                                                            className="rounded-md border-gray-300 text-sm shadow-sm"
+                                                        >
+                                                            {options.link_icons.map((icon) => (
+                                                                <option key={icon} value={icon}>{icon}</option>
+                                                            ))}
+                                                        </select>
+                                                        {!readOnly && (
+                                                            <>
+                                                                <SecondaryButton type="button" onClick={() => moveSidebarLink(index, -1)}>Up</SecondaryButton>
+                                                                <SecondaryButton type="button" onClick={() => moveSidebarLink(index, 1)}>Down</SecondaryButton>
+                                                                <SecondaryButton
+                                                                    type="button"
+                                                                    onClick={() => setData('sidebar_links', data.sidebar_links.filter((_, i) => i !== index).map((item, order) => ({ ...item, order })))}
+                                                                >
+                                                                    Remove
+                                                                </SecondaryButton>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <InputError message={errors[`sidebar_links.${index}.label`]} className="mt-1" />
+                                                    <InputError message={errors[`sidebar_links.${index}.url`]} className="mt-1" />
+                                                    <InputError message={errors[`sidebar_links.${index}.icon`]} className="mt-1" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {!readOnly && data.sidebar_links.length < options.max_sidebar_links && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setData('sidebar_links', [...data.sidebar_links, { label: '', url: '', icon: 'link', order: data.sidebar_links.length }])}
+                                                className="mt-3 text-sm text-indigo-600 underline hover:text-indigo-800"
+                                            >
+                                                Add sidebar link
+                                            </button>
+                                        )}
+                                        <InputError message={errors.sidebar_links} className="mt-2" />
+                                    </div>
+
+                                    <div>
                                         <InputLabel htmlFor="support_email" value="Support email (optional)" />
                                         <TextInput
                                             id="support_email"
@@ -351,16 +452,21 @@ export default function Branding({ tenant, branding, options }) {
                                                             onChange={(event) => updateLink(index, 'url', event.target.value)}
                                                         />
                                                         {!readOnly && (
-                                                            <SecondaryButton
-                                                                onClick={() =>
-                                                                    setData(
-                                                                        'footer_links',
-                                                                        data.footer_links.filter((_, i) => i !== index),
-                                                                    )
-                                                                }
-                                                            >
-                                                                Remove
-                                                            </SecondaryButton>
+                                                            <>
+                                                                <SecondaryButton type="button" onClick={() => moveFooterLink(index, -1)}>Up</SecondaryButton>
+                                                                <SecondaryButton type="button" onClick={() => moveFooterLink(index, 1)}>Down</SecondaryButton>
+                                                                <SecondaryButton
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setData(
+                                                                            'footer_links',
+                                                                            data.footer_links.filter((_, i) => i !== index),
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Remove
+                                                                </SecondaryButton>
+                                                            </>
                                                         )}
                                                     </div>
                                                     <InputError message={errors[`footer_links.${index}.label`]} className="mt-1" />

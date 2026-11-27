@@ -2,7 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Enums\TenantUserRole;
+use App\Models\Contact;
+use App\Models\ContactNote;
 use App\Models\Post;
+use App\Models\Tag;
 use App\Models\Tenant;
 use App\Models\Writer;
 use Illuminate\Database\Seeder;
@@ -25,6 +29,30 @@ class DemoTenantSeeder extends Seeder
                 'writer' => [
                     'name' => 'Harbor Writer',
                     'email' => 'writer@harbor.blogs.test',
+                ],
+                'staff' => [
+                    'name' => 'Harbor Staff',
+                    'email' => 'staff@harbor.blogs.test',
+                ],
+                'contacts' => [
+                    [
+                        'name' => 'Asha Khan',
+                        'email' => 'asha@harbor.example',
+                        'phone' => '555-0142',
+                        'company' => 'Harbor Press',
+                        'job_title' => 'Editor',
+                        'tags' => ['Sponsor', 'Local'],
+                        'notes' => ['Asked about a spring feature.'],
+                    ],
+                    [
+                        'name' => 'Jonah Hale',
+                        'email' => 'jonah@harbor.example',
+                        'phone' => '555-0177',
+                        'company' => 'North Pier',
+                        'job_title' => 'Bookseller',
+                        'tags' => ['Sponsor'],
+                        'notes' => ['Wants the market notes early.'],
+                    ],
                 ],
                 'posts' => [
                     [
@@ -64,6 +92,30 @@ class DemoTenantSeeder extends Seeder
                 'writer' => [
                     'name' => 'Pine Writer',
                     'email' => 'writer@pine.blogs.test',
+                ],
+                'staff' => [
+                    'name' => 'Pine Staff',
+                    'email' => 'staff@pine.blogs.test',
+                ],
+                'contacts' => [
+                    [
+                        'name' => 'Leah Ortiz',
+                        'email' => 'leah@pine.example',
+                        'phone' => '555-0133',
+                        'company' => 'Pine Press',
+                        'job_title' => 'Publisher',
+                        'tags' => ['Subscriber'],
+                        'notes' => ['Requested the spring issue draft.'],
+                    ],
+                    [
+                        'name' => 'Chris Adeyemi',
+                        'email' => 'chris@pine.example',
+                        'phone' => '555-0188',
+                        'company' => 'Paper Mill',
+                        'job_title' => 'Buyer',
+                        'tags' => ['Subscriber', 'Wholesale'],
+                        'notes' => ['Asked for a printed sample.'],
+                    ],
                 ],
                 'posts' => [
                     [
@@ -128,9 +180,19 @@ class DemoTenantSeeder extends Seeder
             $writer = Writer::query()->where('email', $definition['writer']['email'])->first();
 
             if (! $writer) {
-                $writer = Writer::factory()->create([
+                $writer = new Writer;
+                $writer->forceFill([
                     'name' => $definition['writer']['name'],
                     'email' => $definition['writer']['email'],
+                    'password' => self::PASSWORD,
+                    'role' => TenantUserRole::Admin,
+                ])->save();
+            }
+
+            if (! Writer::query()->where('email', $definition['staff']['email'])->exists()) {
+                Writer::factory()->create([
+                    'name' => $definition['staff']['name'],
+                    'email' => $definition['staff']['email'],
                     'password' => self::PASSWORD,
                 ]);
             }
@@ -155,6 +217,49 @@ class DemoTenantSeeder extends Seeder
                     'status' => $post['status'],
                     'published_at' => $post['published_at'],
                 ]);
+            }
+
+            $staff = Writer::query()->where('email', $definition['staff']['email'])->first();
+            $shareNextContact = true;
+
+            foreach ($definition['contacts'] as $contactData) {
+                if (Contact::query()->where('email', $contactData['email'])->exists()) {
+                    $shareNextContact = false;
+
+                    continue;
+                }
+
+                $contact = Contact::factory()->make([
+                    'name' => $contactData['name'],
+                    'email' => $contactData['email'],
+                    'phone' => $contactData['phone'],
+                    'company' => $contactData['company'],
+                    'job_title' => $contactData['job_title'],
+                    'website' => null,
+                    'location' => null,
+                ]);
+                $contact->owner_id = $writer->id;
+                $contact->save();
+
+                if ($shareNextContact && $staff) {
+                    $contact->sharedWith()->sync([$staff->id]);
+                    $shareNextContact = false;
+                }
+
+                $tagIds = [];
+
+                foreach ($contactData['tags'] as $name) {
+                    $tagIds[] = Tag::query()->firstOrCreate(['name' => $name])->getKey();
+                }
+
+                $contact->tags()->sync($tagIds);
+
+                foreach ($contactData['notes'] as $body) {
+                    $note = new ContactNote(['body' => $body]);
+                    $note->contact()->associate($contact);
+                    $note->author()->associate($writer);
+                    $note->save();
+                }
             }
         });
     }

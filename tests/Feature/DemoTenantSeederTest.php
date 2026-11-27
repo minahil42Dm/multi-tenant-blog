@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TenantUserRole;
+use App\Models\Contact;
+use App\Models\ContactNote;
 use App\Models\Post;
 use App\Models\Tenant;
 use App\Models\User;
@@ -99,8 +102,9 @@ class DemoTenantSeederTest extends TestCase
         $this->assertSame(2, Domain::query()->count());
 
         $this->tenant('harbor.blogs.test')->run(function () use ($scheduledAt) {
-            $this->assertSame(1, Writer::query()->count());
+            $this->assertSame(2, Writer::query()->count());
             $this->assertSame(4, Post::query()->count());
+            $this->assertSame(2, Contact::query()->count());
             $this->assertSame(1, Post::query()->where('slug', 'welcome-ashore')->count());
             $this->assertSame(
                 $scheduledAt,
@@ -109,8 +113,9 @@ class DemoTenantSeederTest extends TestCase
         });
 
         $this->tenant('pine.blogs.test')->run(function () {
-            $this->assertSame(1, Writer::query()->count());
+            $this->assertSame(2, Writer::query()->count());
             $this->assertSame(4, Post::query()->count());
+            $this->assertSame(2, Contact::query()->count());
             $this->assertSame(1, Post::query()->where('slug', 'first-edition')->count());
         });
     }
@@ -121,13 +126,16 @@ class DemoTenantSeederTest extends TestCase
         $this->seed(DatabaseSeeder::class);
 
         $this->assertSame(1, User::query()->where('email', 'test@example.com')->count());
+        $this->assertTrue(User::query()->where('email', 'test@example.com')->first()->isSuperAdmin());
+        $this->assertTrue(User::query()->where('email', 'support@example.com')->first()->isSupport());
         $this->assertSame(2, Tenant::query()->count());
         $this->assertSame(2, Domain::query()->count());
 
         foreach (['harbor.blogs.test', 'pine.blogs.test'] as $domain) {
             $this->tenant($domain)->run(function () {
-                $this->assertSame(1, Writer::query()->count());
+                $this->assertSame(2, Writer::query()->count());
                 $this->assertSame(4, Post::query()->count());
+                $this->assertSame(2, Contact::query()->count());
             });
         }
     }
@@ -213,12 +221,17 @@ class DemoTenantSeederTest extends TestCase
             $this->assertTrue(Schema::hasTable('posts'));
 
             $writer = Writer::query()->where('email', $email)->firstOrFail();
+            $staffEmail = str_replace('writer@', 'staff@', $email);
 
-            $this->assertSame(1, Writer::query()->count());
+            $this->assertSame(TenantUserRole::Admin, $writer->role);
+            $this->assertSame(TenantUserRole::Writer, Writer::query()->where('email', $staffEmail)->firstOrFail()->role);
+            $this->assertSame(2, Writer::query()->count());
             $this->assertTrue(Hash::check(DemoTenantSeeder::PASSWORD, $writer->password));
             $this->assertSame(count($expected), Post::query()->count());
+            $this->assertSame(2, Contact::query()->count());
+            $this->assertSame(2, ContactNote::query()->count());
             $this->assertSame(0, Post::query()->whereIn('slug', $foreignSlugs)->count());
-            $this->assertSame(0, Writer::query()->where('email', '!=', $email)->count());
+            $this->assertSame(0, Writer::query()->whereNotIn('email', [$email, $staffEmail])->count());
 
             foreach ($expected as $slug => $status) {
                 $post = Post::query()->where('slug', $slug)->firstOrFail();

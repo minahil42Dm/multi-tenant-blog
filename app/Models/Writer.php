@@ -4,8 +4,10 @@ namespace App\Models;
 
 use App\Enums\TenantUserRole;
 use App\Support\Impersonation;
+use App\Support\TenantImpersonation;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use RuntimeException;
@@ -48,7 +50,7 @@ class Writer extends Authenticatable
     protected static function booted(): void
     {
         static::updating(function (Writer $writer): void {
-            if (Impersonation::active() && $writer->isDirty(['email', 'password'])) {
+            if ((Impersonation::active() || TenantImpersonation::active()) && $writer->isDirty(['email', 'password'])) {
                 throw new AuthorizationException('Email and password changes are not allowed while impersonating.');
             }
         });
@@ -57,6 +59,22 @@ class Writer extends Authenticatable
     public function isTenantAdmin(): bool
     {
         return $this->role === TenantUserRole::Admin;
+    }
+
+    /**
+     * @return HasMany<Post, $this>
+     */
+    public function posts(): HasMany
+    {
+        return $this->hasMany(Post::class, 'user_id');
+    }
+
+    /**
+     * @return HasMany<Contact, $this>
+     */
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(Contact::class, 'owner_id');
     }
 
     public function getConnectionName(): ?string

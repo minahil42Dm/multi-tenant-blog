@@ -12,7 +12,7 @@ export default function Dashboard({ tenantName }) {
                 </h2>
             }
         >
-            <Head title="Writer dashboard" />
+            <Head title="Dashboard" />
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">

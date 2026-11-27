@@ -219,7 +219,7 @@ export default function Index({
                                                         href={route('admin.tenants.writers.create', tenant.id)}
                                                         className="text-indigo-600 underline hover:text-indigo-800"
                                                     >
-                                                        Add writer
+                                                        Add user
                                                     </Link>
                                                 )}
                                             </div>

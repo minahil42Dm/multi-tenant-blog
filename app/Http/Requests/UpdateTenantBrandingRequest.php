@@ -35,6 +35,27 @@ class UpdateTenantBrandingRequest extends FormRequest
             $normalized['support_email'] = strtolower($normalized['support_email']);
         }
 
+        $sidebarLinks = $this->input('sidebar_links');
+
+        if (is_array($sidebarLinks)) {
+            $normalized['sidebar_links'] = collect($sidebarLinks)
+                ->map(function (mixed $link, int $index) {
+                    if (! is_array($link)) {
+                        return $link;
+                    }
+
+                    return [
+                        'label' => trim((string) ($link['label'] ?? '')),
+                        'url' => trim((string) ($link['url'] ?? '')),
+                        'icon' => (string) ($link['icon'] ?? 'link'),
+                        'order' => is_numeric($link['order'] ?? null) ? (int) $link['order'] : $index,
+                    ];
+                })
+                ->reject(fn (mixed $link) => is_array($link) && $link['label'] === '' && $link['url'] === '')
+                ->values()
+                ->all();
+        }
+
         $links = $this->input('footer_links');
 
         if (is_array($links)) {
@@ -66,6 +87,12 @@ class UpdateTenantBrandingRequest extends FormRequest
             'support_email' => ['nullable', 'string', 'email:rfc', 'max:254'],
             'sidebar_style' => ['required', Rule::in(TenantBranding::SIDEBAR_STYLES)],
             'sidebar_tagline' => ['nullable', 'string', 'max:80'],
+            'sidebar_links' => ['nullable', 'array', 'max:'.TenantBranding::MAX_SIDEBAR_LINKS],
+            'sidebar_links.*' => ['array:label,url,icon,order'],
+            'sidebar_links.*.label' => ['required', 'string', 'max:40'],
+            'sidebar_links.*.url' => ['required', 'string', 'max:2048', 'url:http,https'],
+            'sidebar_links.*.icon' => ['required', Rule::in(TenantBranding::LINK_ICONS)],
+            'sidebar_links.*.order' => ['required', 'integer', 'min:0', 'max:100'],
             'footer_links' => ['nullable', 'array', 'max:'.TenantBranding::MAX_FOOTER_LINKS],
             'footer_links.*' => ['array:label,url'],
             'footer_links.*.label' => ['required', 'string', 'max:40'],
@@ -84,6 +111,9 @@ class UpdateTenantBrandingRequest extends FormRequest
             'support_email' => 'support email',
             'sidebar_style' => 'sidebar style',
             'sidebar_tagline' => 'sidebar tagline',
+            'sidebar_links.*.label' => 'sidebar link label',
+            'sidebar_links.*.url' => 'sidebar link URL',
+            'sidebar_links.*.icon' => 'sidebar link icon',
             'footer_links.*.label' => 'link label',
             'footer_links.*.url' => 'link URL',
         ];

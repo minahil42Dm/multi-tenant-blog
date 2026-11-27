@@ -4,7 +4,9 @@ namespace App\Http\Middleware;
 
 use App\Support\CentralAbility;
 use App\Support\Impersonation;
+use App\Support\TenantAbility;
 use App\Support\TenantBranding;
+use App\Support\TenantImpersonation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -39,7 +41,7 @@ class HandleInertiaRequests extends Middleware
                     ? $request->user('writer')
                     : $request->user(),
                 'can' => fn () => tenancy()->initialized
-                    ? []
+                    ? TenantAbility::for($request->user('writer'))
                     : CentralAbility::for($request->user('web')),
             ],
             'tenant' => fn () => tenancy()->initialized ? [
@@ -47,12 +49,12 @@ class HandleInertiaRequests extends Middleware
             ] : null,
             'branding' => fn () => tenancy()->initialized ? TenantBranding::current() : null,
             'impersonation' => function () use ($request) {
-                $details = Impersonation::details($request);
+                $details = Impersonation::details($request) ?? TenantImpersonation::details($request);
 
                 return $details === null ? null : [
                     'writer_name' => $details['writer_name'],
                     'writer_email' => $details['writer_email'],
-                    'impersonator_email' => $details['impersonator_email'],
+                    'impersonator_email' => $details['impersonator_email'] ?? $details['actor_email'],
                 ];
             },
             'flash' => [

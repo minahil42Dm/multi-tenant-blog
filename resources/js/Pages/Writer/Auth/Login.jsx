@@ -22,7 +22,7 @@ export default function Login({ status }) {
 
     return (
         <GuestLayout>
-            <Head title="Writer login" />
+            <Head title="Sign in" />
 
             {status && (
                 <div className="mb-4 text-sm font-medium text-green-600">

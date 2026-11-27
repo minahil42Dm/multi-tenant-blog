@@ -77,7 +77,7 @@ function DomainsSection({ tenant }) {
             <div>
                 <h3 className="text-lg font-medium text-gray-900">Domains</h3>
                 <p className="mt-1 text-sm text-gray-600">
-                    The primary domain is used for links, the writer login and
+                    The primary domain is used for links, the tenant login and
                     impersonation. A tenant always keeps at least one domain.
                 </p>
             </div>

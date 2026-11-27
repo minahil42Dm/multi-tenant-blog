@@ -54,7 +54,7 @@ export default function Index({ tenant, writers, csrfToken }) {
                             href={route('admin.tenants.writers.create', tenant.id)}
                             className="inline-flex rounded-md bg-gray-800 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white hover:bg-gray-700"
                         >
-                            Add writer
+                            Add user
                         </Link>
                     )}
                 </div>
@@ -112,7 +112,7 @@ export default function Index({ tenant, writers, csrfToken }) {
                                             colSpan={showActions ? 5 : 4}
                                             className="px-6 py-4 text-sm text-gray-500"
                                         >
-                                            No writers yet.
+                                            No users yet.
                                         </td>
                                     </tr>
                                 )}

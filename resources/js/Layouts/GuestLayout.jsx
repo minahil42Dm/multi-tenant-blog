@@ -20,6 +20,22 @@ export default function GuestLayout({ children }) {
                         />
                     </Link>
 
+                    {(branding.sidebar_links ?? []).length > 0 && (
+                        <nav className="mt-4 flex max-w-md flex-wrap justify-center gap-3 px-6">
+                            {(branding.sidebar_links ?? []).map((link) => (
+                                <a
+                                    key={`${link.order}-${link.url}`}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer nofollow"
+                                    className="text-sm font-medium text-gray-600 underline"
+                                >
+                                    {link.label}
+                                </a>
+                            ))}
+                        </nav>
+                    )}
+
                     <div
                         className="mt-6 w-full overflow-hidden border-t-4 bg-white px-6 py-4 shadow-md sm:max-w-md sm:rounded-lg"
                         style={{ borderTopColor: branding.color }}

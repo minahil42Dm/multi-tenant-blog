@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Writer;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Writer\PostRequest;
 use App\Models\Post;
+use App\Models\Writer;
+use App\Support\TenantAbility;
 use App\Support\TenantCoverImage;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,8 +20,9 @@ class PostController extends Controller
 
     public function index(): Response
     {
-        $writer = auth('writer')->user();
-        $writerId = (int) $writer->id;
+        $this->authorizePosts();
+
+        $writer = $this->writer();
 
         $posts = Post::query()
             ->visibleToWriter($writer)
@@ -32,7 +36,7 @@ class PostController extends Controller
                 'published_at' => $post->published_at?->toDateTimeString(),
                 'author' => $post->writer?->name,
                 'cover_url' => TenantCoverImage::url($post->cover_image),
-                'can_manage' => (int) $post->user_id === $writerId,
+                'can_manage' => $this->canManage($writer, $post),
             ]);
 
         return Inertia::render('Writer/Posts/Index', [
@@ -42,11 +46,15 @@ class PostController extends Controller
 
     public function create(): Response
     {
+        $this->authorizePosts();
+
         return Inertia::render('Writer/Posts/Create');
     }
 
     public function store(PostRequest $request): RedirectResponse
     {
+        $this->authorizePosts();
+
         $post = new Post($this->attributes($request));
         $post->user_id = $request->user('writer')->id;
         $post->cover_image = TenantCoverImage::sync($request, null);
@@ -138,7 +146,26 @@ class PostController extends Controller
             'published_at_label' => $post->published_at?->toDateTimeString(),
             'author' => $post->writer?->name,
             'cover_url' => TenantCoverImage::url($post->cover_image),
-            'can_manage' => (int) $post->user_id === (int) auth('writer')->id(),
+            'can_manage' => $this->canManage($this->writer(), $post),
         ];
+    }
+
+    private function authorizePosts(): void
+    {
+        abort_unless(TenantAbility::allows(auth('writer')->user(), TenantAbility::CREATE_POSTS), 403);
+    }
+
+    private function writer(): Writer
+    {
+        $writer = auth('writer')->user();
+
+        abort_unless($writer instanceof Writer, 403);
+
+        return $writer;
+    }
+
+    private function canManage(Writer $writer, Post $post): bool
+    {
+        return Gate::forUser($writer)->allows('update', $post);
     }
 }

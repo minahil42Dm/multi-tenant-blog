@@ -8,7 +8,10 @@ A white-label, multi-tenant blogging platform built with Laravel 11 and stancl/t
 - One MySQL database per tenant, created and migrated automatically when the tenant is created.
 - Separate authentication for central users and tenant writers.
 - Writer accounts created by central administrators, with writer login on each tenant domain.
-- Post management for writers: create, view, edit, and delete their own posts.
+- Tenant roles: the first account is a tenant admin, and later accounts are writers unless an admin chooses otherwise.
+- Tenant admins manage users in their own tenant and can impersonate a writer there.
+- A contacts CRM per tenant, with owners, sharing, tags, notes, search, and queued CSV import.
+- Post management: writers manage their own posts, and tenant admins can manage every post in the tenant.
 - Draft, scheduled, and published post statuses.
 - Scheduled publishing through the Laravel scheduler and a queued job.
 - Optional cover images (JPEG, PNG, or WebP, up to 2 MB), stored separately per tenant.
@@ -86,10 +89,12 @@ Upgrading an existing installation to the tenant lifecycle, domain management an
 
 ```bash
 php artisan migrate          # tenant status, primary domains, impersonation tokens, audit log
-php artisan tenants:migrate  # adds the role column to every tenant's users table
+php artisan tenants:migrate  # tenant user roles, then contacts, tags, notes, and imports
 ```
 
-The primary-domain migration marks each tenant's oldest domain as primary. Existing writers get the `writer` role; none become tenant admins.
+Run `php artisan tenants:migrate` only against a development database you intend to upgrade. It alters every existing tenant database. Do not run it against a database whose tenant data you cannot replace.
+
+The primary-domain migration marks each tenant's oldest domain as primary. Existing writers get the `writer` role; none become tenant admins. The contact tables are created empty. Existing posts, users, and files are left in place.
 
 Build the frontend assets:
 
@@ -210,12 +215,36 @@ Super admins and support can sign in as a tenant user to see exactly what they s
 
 Starting and stopping impersonation, tenant creation, edits, status changes, deletions and domain changes are written to the central `audit_logs` table with the acting user, tenant ID, IP address and details. Audit entries are kept when a tenant is deleted.
 
+### Tenant admin impersonating a writer
+
+A tenant admin can impersonate a writer on the same tenant from the Users page. The route is `POST /writers/{id}/impersonate`, and it is behind the same user-management ability as the rest of that page.
+
+- The admin cannot impersonate themselves, another tenant admin, a central user, or a user that does not exist in this tenant's database.
+- A writer cannot start impersonation.
+- The session is switched to the writer and the original admin is stored in `tenant_impersonation`, separate from the central `central_impersonation` session. Abilities follow the writer, so the impersonated session cannot manage users.
+- The same banner and **Stop impersonating** action restore the original tenant admin on this domain.
+- Email and password changes stay blocked while either impersonation session is active.
+- Start and stop are written to `audit_logs` with `actor_id` left empty, because that column references central users. The tenant admin and the writer are recorded in the metadata, with the tenant id and the time.
+
+## Tenant roles
+
+Tenant users live in the tenant database. Their `role` is not mass-assignable.
+
+| Role | Access |
+| --- | --- |
+| `admin` (Tenant admin) | Manage the tenant's users, impersonate a tenant user, manage every post, and see and manage every contact in the tenant. |
+| `writer` (Tenant user) | Manage their own posts, read other writers' published posts, and work with contacts they own or that were shared with them. User management and impersonation return 403. |
+
+The account created with the tenant is the first tenant admin. An admin can create another admin directly. An admin cannot demote or delete the last admin, and cannot demote or delete their own account. Changing your own password requires the current password. Changing someone else's password does not. The Users page hides **Add user** when `auth.can.manageUsers` is false; the routes still enforce the ability.
+
+A tenant admin changes users at `http://{tenant-domain}/writers`.
+
 ## Tenant writers
 
 Writers belong to a single tenant and are stored in that tenant's database. There is no public writer registration. A verified central administrator creates each writer:
 
 1. Open `http://blogs.test/admin/tenants`.
-2. Find the tenant and click **Add writer**.
+2. Find the tenant and click **Add user**.
 3. Enter the writer's name, email, and password, then confirm the password.
 
 The writer is created in that tenant's database only. An email can be used once per tenant, and the same email can exist in different tenants. Share the password with the writer securely.
@@ -231,7 +260,7 @@ A writer account works only on the tenant domain where it was created. Central a
 
 Writers manage posts at `http://{tenant-domain}/posts`.
 
-- Writers can view their own posts in any status and other writers' posts only once they are publicly published. Only the author can edit or delete a post.
+- Writers can view their own posts in any status and other writers' posts only once they are publicly published. A writer can edit or delete only their own posts. A tenant admin can view, edit, and delete every post in that tenant.
 - Slugs are generated from the title when the post is created and are unique within the tenant. Editing the title later does not change the slug.
 - New posts default to **draft**.
 
@@ -253,9 +282,27 @@ Covers are optional, in JPEG, PNG, or WebP format, up to 2 MB. They are stored u
 - `http://{tenant-domain}/posts/{slug}` shows a single published post.
 - Drafts, scheduled posts, published posts dated in the future, and other tenants' posts return 404.
 
+## Contacts
+
+Each tenant has its own contacts, tags, notes, shares, and CSV imports in its tenant database. Central users do not see them. A signed-in tenant user opens `http://{tenant-domain}/contacts`. On a narrow screen, open the menu button to reach Contacts and Log out.
+
+- Every contact has an owner, the user who created it or who uploaded the CSV. The owner and a tenant admin can edit it, delete it, and change who it is shared with. Deletion asks for confirmation.
+- A contact is private until it is shared. A tenant user sees only their own contacts and contacts explicitly shared with them. A tenant admin sees every contact in that tenant. Sharing is a list of other users on the contact page. Shared users can view the contact and add notes. They cannot edit the contact, delete it, or change the share list. Unchecking a user and saving removes their access.
+- A user who still owns contacts cannot be deleted, so a contact does not lose its owner. Shares are removed when the shared user is deleted.
+- Fields are name, email, phone, company, job title, website, and location. Email is unique inside the tenant when it is present. Several contacts may omit an email. A duplicate email that appears during the save is a validation error.
+- Tags are created, renamed, assigned with checkboxes, and removed from the contacts page. The list can be filtered by one tag. An empty list says "No contacts yet." A search with no matches says "No contacts match these filters."
+- Notes are shown oldest first. The author or a tenant admin can edit and delete a note. Another user cannot. Adding a note requires access to that contact.
+- Search matches name, email, phone, and company. The list is sorted by name, email, company, or date, and paginated 15 at a time.
+- CSV import accepts a `.csv` or `.txt` file up to 1 MB. The header must include `name`. Optional columns are `email`, `phone`, `company`, `job_title`, `website`, `location`, and `tags` (several tags separated by a semicolon or comma). Unknown columns fail the file. Invalid rows are listed and are not saved. An email that already exists, including one that appears twice in the file or collides while the row is saved, is skipped and left unchanged. Imported contacts are owned by the user who uploaded the file.
+- The upload is stored on the tenant disk under `contact-imports/` and processed by `ImportContacts`, which records the tenant id and initializes that tenant when the worker runs. The result page stays on "pending" and reloads every few seconds until the worker finishes. With `QUEUE_CONNECTION=database`, run `php artisan queue:work` in a second terminal. A suspended tenant's job is marked failed and writes no contacts. Another tenant's job cannot write into this tenant.
+
+## Contact sharing
+
+Sharing is per contact, not per tenant. On the contact page, the owner or a tenant admin checks the users who should see it and clicks **Save sharing**. The owner is not in that list. A tenant user who is not the owner and is not on the list receives 403 for the contact, its edit form, its delete action, and its notes. Tenant admins are not limited by that list. Nothing in this list is visible on another tenant's domain, because the contact rows live in a different database.
+
 ## Tenant branding and homepage cache
 
-The name, logo path, and brand color entered when the tenant is created are stored in the central tenant record. The public blog layout, homepage, and post pages use them for the blog title, logo, and accent color. An invalid or missing color falls back to `#1d4ed8`, and a missing name falls back to `Blog`. A logo appears only if its file exists in `storage/app/public/tenant-logos/`.
+Branding is stored in the central tenant record's `data` JSON: name, brand color, accent color, logo, favicon, support email, sidebar style, sidebar tagline, sidebar links, and footer links. A sidebar link has a label, an https URL, an icon from a fixed list, and a display order. Footer links have a label and an https URL, and the form order is the display order. Logo and favicon files live under `storage/tenant{tenant-id}/app/public/branding/{tenant-id}/`. An invalid or missing color falls back to `#1d4ed8`, and a missing name falls back to `Blog`. Super admins edit branding from the tenant's branding page.
 
 The public homepage post list is cached for up to one hour under the key `blog.homepage`. If a published post is dated in the future, the cache expires when that date arrives. The tenant cache prefix (`tenant_{id}_`) gives each tenant its own copy. Creating, updating, or deleting a post clears that tenant's cache, and so does the scheduled publish job. Other tenants' caches are not affected.
 
@@ -279,9 +326,9 @@ php artisan posts:publish-due
 
 ## Demo data
 
-The demo seeder creates two local tenants through the normal tenant provisioning flow. Each tenant gets its own domain, brand color, database, writer, and sample posts. It does not create cover images or logos. It does not delete existing tenants, databases, users, posts, or central admin accounts.
+The demo seeder creates two local tenants through the normal tenant creation flow. Each tenant gets its own domain, brand color, database, tenant admin, staff writer, sample posts, contacts, tags, and notes. It does not create cover images or logos. It does not delete or rewrite existing tenants, databases, users, posts, contacts, or central accounts. If a demo writer already exists, their role and password are left alone.
 
-Running it again skips tenants, domains, writers, and posts that already exist. It does not reset an existing demo writer's password or rewrite posts that were already seeded.
+Running it again skips tenants, domains, users, posts, and contacts that already exist.
 
 From the project directory:
 
@@ -289,14 +336,19 @@ From the project directory:
 php artisan db:seed --class=DemoTenantSeeder
 ```
 
-`php artisan db:seed` also runs it, after creating the `test@example.com` central user if that user does not exist yet.
+`php artisan db:seed` also runs it. If they do not already exist, it creates `test@example.com` as a super admin and `support@example.com` as support. It does not change the role of an account that is already there.
 
-These credentials are for local development only.
+These credentials are for local development only. The password for every seeded account below is `password`.
 
-| Blog           | Domain            | Writer email             | Password |
-| -------------- | ----------------- | ------------------------ | -------- |
-| Harbor Journal | harbor.blogs.test | writer@harbor.blogs.test | password |
-| Pine and Paper | pine.blogs.test   | writer@pine.blogs.test   | password |
+| Account | Email | Role |
+| --- | --- | --- |
+| Test User | test@example.com | Super admin, only when the seeder creates the account |
+| Support Agent | support@example.com | Support |
+
+| Blog | Domain | Tenant admin | Staff writer |
+| --- | --- | --- | --- |
+| Harbor Journal | harbor.blogs.test | writer@harbor.blogs.test | staff@harbor.blogs.test |
+| Pine and Paper | pine.blogs.test | writer@pine.blogs.test | staff@pine.blogs.test |
 
 Writer login is at `http://harbor.blogs.test/login` and `http://pine.blogs.test/login`.
 
@@ -309,7 +361,7 @@ herd link pine.blogs
 
 Add `127.0.0.1 harbor.blogs.test` and `127.0.0.1 pine.blogs.test` to the hosts file if they are not already mapped.
 
-Each tenant gets two published posts, one draft, and one scheduled post dated 7 or 14 days ahead. The demo seeder does not create a central administrator.
+Each tenant gets two published posts, one draft, and one scheduled post dated 7 or 14 days ahead. `php artisan db:seed` creates the central accounts listed above. `php artisan db:seed --class=DemoTenantSeeder` does not.
 
 ## Tests and frontend build
 
@@ -318,7 +370,9 @@ php artisan test
 npm run build
 ```
 
-The tests use SQLite in memory (see `phpunit.xml`). They do not need MySQL, Herd, or tenant domains, and they never touch the local MySQL database. Tests that create tenants make temporary SQLite tenant databases and delete them afterwards.
+The tests use SQLite in memory (see `phpunit.xml`). They do not need MySQL, Herd, or tenant domains, and they never touch the local MySQL database named in `.env`. Tests that create tenants make temporary SQLite tenant databases and delete them afterwards.
+
+`ContactImportQueueTest` sets the queue driver to `database` and runs `queue:work --once`, so the import is stored in the `jobs` table and processed by a worker rather than the sync driver. `MysqlAdminLockTest` opens its own MySQL connection, creates a throwaway `lockcheck_*` database, proves the last-admin row lock waits, and drops that database. It skips when MySQL is not available and does not use `multi_tenant_blog`.
 
 GitHub Actions runs the same steps in `.github/workflows/ci.yml` on every pull request and on pushes to `feature/**` and `feat/**` branches.
 
@@ -326,6 +380,14 @@ GitHub Actions runs the same steps in `.github/workflows/ci.yml` on every pull r
 
 - Commit messages follow Conventional Commits in the form `type(scope): description`, for example `feat(posts): add scheduled publishing job`.
 - Project rules for the Cursor editor live in `.cursor/rules/`. They cover architecture, tenant isolation, authentication, tenant infrastructure, testing and security, and commit messages.
+
+## Troubleshooting
+
+- A tenant domain shows the central site or fails to resolve. The host must be in the hosts file or linked in Herd, and it must not be one of the central domains in `config/tenancy.php`.
+- The import page stays on pending. `QUEUE_CONNECTION=database` stores the job until `php artisan queue:work` is running.
+- A session that works on one tenant returns 403 on another. Sessions are bound to the tenant that created them.
+- A suspended tenant shows a suspended page and its queued import is marked failed instead of writing contacts.
+- `php artisan tenants:migrate` changes every tenant database for the connection in `.env`. Point `.env` at a disposable database before using it. Do not run it while `DB_DATABASE` is a database whose tenants you need to keep unchanged.
 
 ## Known limitations
 
@@ -345,17 +407,18 @@ GitHub Actions runs the same steps in `.github/workflows/ci.yml` on every pull r
 
 - that tenant's users (writers and tenant admins, by `role`), in its own `users` table
 - that tenant's posts
+- that tenant's contacts, tags, notes, contact shares, and contact imports
 
 **How a tenant request is isolated:**
 
 1. `InitializeTenancyByDomain` finds the tenant from the request's domain. `PreventAccessFromCentralDomains` blocks tenant routes on central domains.
-2. The database bootstrapper switches the default connection to that tenant's database. The writer and post models refuse to run when no tenant is active.
+2. The database bootstrapper switches the default connection to that tenant's database. Writer, post, contact, tag, note, and import models refuse to run when no tenant is active.
 3. The central `User` and `Tenant` models always use the central connection.
 4. `ScopeSessions` binds each session to one tenant. A session cookie reused on another tenant's domain gets a 403.
 5. The `writer` guard authenticates tenant writers. The `web` guard authenticates central users.
 6. Cache keys are prefixed with `tenant_{id}_`, so each tenant's homepage cache is separate.
 7. The filesystem bootstrapper gives each tenant its own storage folder, `storage/tenant{tenant-id}`.
-8. Queued jobs carry the tenant id, and the publish job runs only in that tenant's database.
+8. Queued jobs carry the tenant id. The publish job and the contact import job initialize that tenant, refuse another tenant's rows, and end tenancy afterwards. CSV files are stored on the tenant disk.
 
 Tenancy ends after every request and after every queued job.
 
@@ -380,7 +443,7 @@ Tenancy is a context that starts and ends. Inside it, the database, cache prefix
 - **Sessions** stay in the central database. `ScopeSessions` binds a session to one tenant, so a cookie reused on another tenant's domain gets a 403.
 - **Cache** entries are prefixed with `tenant_{id}_` by a small custom bootstrapper, because the database cache store does not support tags. That is what keeps the `blog.homepage` cache separate per tenant.
 - **File storage** is re-rooted per tenant (`storage/tenant{id}`). Cover images go under `covers/{tenantId}/` and are served through `/tenancy/assets/`. Central logos have to be read from the central path, because `storage_path()` changes inside a tenant.
-- **Queued jobs** carry the tenant id. `PublishScheduledPost` stores its tenant id itself, re-initializes that tenant when it runs, refuses to run for a different tenant, and ends tenancy afterwards.
+- **Queued jobs** carry the tenant id. `PublishScheduledPost` and `ImportContacts` store the tenant id, re-initialize that tenant when a worker runs, refuse another tenant's rows, and end tenancy afterwards. A suspended tenant's import is marked failed and does not write contacts.
 
 ### Isolation and authorization
 
@@ -398,7 +461,7 @@ Authentication is split into two guards: `web` for central users and `writer` fo
 
 Building this project helped me understand how multi-tenancy works in Laravel. I learned how domains identify tenants and how each tenant can have a separate database.
 
-The most challenging part was maintaining tenant isolation, especially for posts, writers, uploaded images, caching and scheduled jobs.
+The most challenging part was maintaining tenant isolation, especially for posts, writers, uploaded images, caching, scheduled jobs, and the contacts CRM. A contact is private to its owner unless it is shared, and a queued import has to restore the same tenant before it writes anything.
 
 If I built this project again, I would plan the architecture more carefully and write isolation tests earlier in development.
 
