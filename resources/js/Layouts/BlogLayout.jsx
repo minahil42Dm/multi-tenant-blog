@@ -19,15 +19,30 @@ export default function BlogLayout({ branding: pageBranding, children }) {
                             branding={branding}
                             style="logo_and_name"
                             logoClassName="h-10 w-10"
+                            showTagline
                         />
                     </Link>
-                    <Link
-                        href={route('writer.login')}
-                        className="shrink-0 text-sm font-medium underline"
-                        style={{ color: branding.accent_color ?? color }}
-                    >
-                        Writer sign in
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-end gap-4">
+                        {(branding.sidebar_links ?? []).map((link) => (
+                            <a
+                                key={`${link.order}-${link.url}`}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer nofollow"
+                                className="text-sm font-medium"
+                                style={{ color }}
+                            >
+                                {link.label}
+                            </a>
+                        ))}
+                        <Link
+                            href={route('writer.login')}
+                            className="shrink-0 text-sm font-medium underline"
+                            style={{ color: branding.accent_color ?? color }}
+                        >
+                            Sign in
+                        </Link>
+                    </div>
                 </div>
             </header>
 

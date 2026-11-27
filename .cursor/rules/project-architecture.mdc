@@ -22,17 +22,25 @@ alwaysApply: true
   `posts/{slug}` route (`blog.show`) stays reachable. Keep that ordering and constraint.
 - Central models: `App\Models\Tenant`, `App\Models\User`, `App\Models\Domain` (extends stancl's, adds `is_primary`;
   set as `tenancy.domain_model`), `App\Models\AuditLog`, stancl `ImpersonationToken`.
-- Tenant models: `App\Models\Writer` (table `users`, `role` is `TenantUserRole`: `admin` or `writer`), `App\Models\Post`.
+- Tenant models: `App\Models\Writer` (table `users`, `role` is `TenantUserRole`: `admin` or `writer`), `App\Models\Post`,
+  `Contact`, `Tag`, `ContactNote`, and `ContactImport`. All of them throw if tenancy is not initialized.
 - Tenant-aware helpers: `app/Support/TenantCoverImage.php`, `TenantBranding.php`, `HomepageCache.php`.
 - Tenant lifecycle: `app/Support/TenantLifecycle.php` (`provision()` with rollback, `delete()` through the stancl pipeline).
   Domain validation and normalization: `app/Support/DomainName.php`. Use `$tenant->primaryDomainName()`, never `domains->first()`.
 - Central authorization: every central ability lives in `app/Support/CentralAbility.php` and is enforced with `can:` route
   middleware. Support is read-only plus impersonation of non-admin writers (`CentralAbility::canImpersonate`).
-- The first tenant user is created by `TenantLifecycle::provision()` as a tenant admin. `role` stays off `Writer::$fillable`
-  and is set with `forceFill`.
+- Tenant authorization: `app/Support/TenantAbility.php`, checked against the `writer` guard and only while tenancy is
+  initialized. Post access stays in `PostPolicy` and `Post::scopeVisibleToWriter()`. Tenant admins manage users at
+  `/writers` (`Writer\UserController`). `role` stays off `Writer::$fillable` and is set with `forceFill`.
 - Impersonation: `Admin\ImpersonationController` issues a stancl `ImpersonationToken` and POSTs it (never in a URL) to the
   tenant's `/impersonate` route (`Writer\ImpersonationController`), which consumes it atomically. Session state is in
-  `app/Support/Impersonation.php`. Audit every start, stop and admin mutation with `AuditLog::record()`.
+  `app/Support/Impersonation.php`. A tenant admin impersonates a writer in the same tenant through
+  `TenantImpersonation` (`tenant_impersonation` session key, `POST /writers/{writer}/impersonate`). Do not store a
+  tenant writer id in `audit_logs.actor_id`. Audit every start, stop and admin mutation with `AuditLog::record()`.
+- Contacts: tenant routes under `can:tenant.manage-contacts`. Each contact has an `owner_id` and optional rows in
+  `contact_shares`. Tenant admins see every contact; other users see contacts they own or that are shared with them.
+  CSV import is `ImportContacts`, which re-initializes the tenant id captured when the job was dispatched and assigns
+  the uploading user as owner. Files stay on the tenant disk.
 - Scheduled publishing: `app/Console/Commands/PublishDuePosts.php` (`posts:publish-due`, every minute in
   `routes/console.php`) and `app/Jobs/PublishScheduledPost.php`.
 - Pages: `resources/js/Pages/{Admin,Writer,Blog}`; layouts in `resources/js/Layouts`.

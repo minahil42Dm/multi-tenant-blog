@@ -59,6 +59,10 @@ class WriterController extends Controller
                 'name' => $tenant->name,
                 'domain' => $tenant->primaryDomainName(),
             ],
+            'roles' => array_map(fn (TenantUserRole $role) => [
+                'value' => $role->value,
+                'label' => $role->label(),
+            ], TenantUserRole::cases()),
         ]);
     }
 
@@ -68,10 +72,12 @@ class WriterController extends Controller
     public function store(StoreWriterRequest $request, string $centralDomain, Tenant $tenant): RedirectResponse
     {
         $attributes = $request->safe()->only(['name', 'email', 'password']);
+        $role = TenantUserRole::from($request->validated('role'));
 
-        $created = $tenant->run(function () use ($attributes): bool {
+        $created = $tenant->run(function () use ($attributes, $role): bool {
             try {
-                Writer::create($attributes);
+                $writer = Writer::create($attributes);
+                $writer->forceFill(['role' => $role])->save();
             } catch (UniqueConstraintViolationException) {
                 return false;
             }

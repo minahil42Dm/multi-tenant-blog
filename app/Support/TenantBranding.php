@@ -28,6 +28,10 @@ class TenantBranding
 
     public const MAX_FOOTER_LINKS = 5;
 
+    public const MAX_SIDEBAR_LINKS = 5;
+
+    public const LINK_ICONS = ['link', 'home', 'mail', 'phone', 'book', 'users', 'star'];
+
     public const ASSETS = ['logo', 'favicon'];
 
     public const CACHE_KEY = 'tenant.branding';
@@ -41,7 +45,7 @@ class TenantBranding
     /**
      * Branding for the current tenant, cached under the tenant-prefixed cache key.
      *
-     * @return array{name: string, color: string, accent_color: string, logo_url: ?string, favicon_url: ?string, support_email: ?string, sidebar_style: string, sidebar_tagline: ?string, footer_links: array<int, array{label: string, url: string}>}
+     * @return array{name: string, color: string, accent_color: string, logo_url: ?string, favicon_url: ?string, support_email: ?string, sidebar_style: string, sidebar_tagline: ?string, sidebar_links: array<int, array{label: string, url: string, icon: string, order: int}>, footer_links: array<int, array{label: string, url: string}>}
      */
     public static function current(): array
     {
@@ -84,7 +88,7 @@ class TenantBranding
     /**
      * Normalized stored settings, with file paths rather than URLs.
      *
-     * @return array{name: string, brand_color: string, accent_color: string, logo: ?string, favicon: ?string, support_email: ?string, sidebar_style: string, sidebar_tagline: ?string, footer_links: array<int, array{label: string, url: string}>}
+     * @return array{name: string, brand_color: string, accent_color: string, logo: ?string, favicon: ?string, support_email: ?string, sidebar_style: string, sidebar_tagline: ?string, sidebar_links: array<int, array{label: string, url: string, icon: string, order: int}>, footer_links: array<int, array{label: string, url: string}>}
      */
     public static function settings(?Tenant $tenant): array
     {
@@ -104,6 +108,7 @@ class TenantBranding
             'sidebar_style' => in_array($sidebarStyle, self::SIDEBAR_STYLES, true) ? $sidebarStyle : self::DEFAULT_SIDEBAR_STYLE,
             'sidebar_tagline' => $string('sidebar_tagline'),
             'footer_links' => self::footerLinks($value('footer_links')),
+            'sidebar_links' => self::sidebarLinks($value('sidebar_links')),
         ];
     }
 
@@ -141,6 +146,40 @@ class TenantBranding
                 && in_array(strtolower((string) parse_url($link['url'], PHP_URL_SCHEME)), ['http', 'https'], true))
             ->map(fn (array $link) => ['label' => trim($link['label']), 'url' => trim($link['url'])])
             ->take(self::MAX_FOOTER_LINKS)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Custom navigation links. Order is the display order. Icons are limited to a
+     * fixed set so the stored value cannot become markup.
+     *
+     * @return array<int, array{label: string, url: string, icon: string, order: int}>
+     */
+    public static function sidebarLinks(mixed $links): array
+    {
+        if (! is_array($links)) {
+            return [];
+        }
+
+        return collect($links)
+            ->filter(fn (mixed $link) => is_array($link)
+                && is_string($link['label'] ?? null) && trim($link['label']) !== ''
+                && is_string($link['url'] ?? null)
+                && in_array(strtolower((string) parse_url($link['url'], PHP_URL_SCHEME)), ['http', 'https'], true))
+            ->values()
+            ->map(function (array $link, int $index): array {
+                $icon = is_string($link['icon'] ?? null) ? $link['icon'] : 'link';
+
+                return [
+                    'label' => trim($link['label']),
+                    'url' => trim($link['url']),
+                    'icon' => in_array($icon, self::LINK_ICONS, true) ? $icon : 'link',
+                    'order' => is_numeric($link['order'] ?? null) ? (int) $link['order'] : $index,
+                ];
+            })
+            ->sortBy('order')
+            ->take(self::MAX_SIDEBAR_LINKS)
             ->values()
             ->all();
     }
@@ -274,6 +313,7 @@ class TenantBranding
             'support_email' => $settings['support_email'],
             'sidebar_style' => $settings['sidebar_style'],
             'sidebar_tagline' => $settings['sidebar_tagline'],
+            'sidebar_links' => $settings['sidebar_links'],
             'footer_links' => $settings['footer_links'],
         ];
     }

@@ -11,7 +11,7 @@ enum TenantUserRole: string
     {
         return match ($this) {
             self::Admin => 'Tenant admin',
-            self::Writer => 'Writer',
+            self::Writer => 'Tenant user',
         };
     }
 }

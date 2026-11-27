@@ -319,6 +319,7 @@ class CentralRoleAuthorizationTest extends TestCase
         return [
             'name' => 'Ada Writer',
             'email' => 'ada@alpha.test',
+            'role' => 'writer',
             'password' => 'secret-password',
             'password_confirmation' => 'secret-password',
         ];

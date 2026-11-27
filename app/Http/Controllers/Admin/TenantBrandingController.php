@@ -16,7 +16,7 @@ use Throwable;
 
 class TenantBrandingController extends Controller
 {
-    private const EDITABLE = ['name', 'brand_color', 'accent_color', 'support_email', 'sidebar_style', 'sidebar_tagline', 'footer_links'];
+    private const EDITABLE = ['name', 'brand_color', 'accent_color', 'support_email', 'sidebar_style', 'sidebar_tagline', 'sidebar_links', 'footer_links'];
 
     public function edit(string $centralDomain, Tenant $tenant): Response
     {
@@ -41,6 +41,8 @@ class TenantBrandingController extends Controller
                     ['value' => 'name', 'label' => 'Name only'],
                 ],
                 'max_footer_links' => TenantBranding::MAX_FOOTER_LINKS,
+                'max_sidebar_links' => TenantBranding::MAX_SIDEBAR_LINKS,
+                'link_icons' => TenantBranding::LINK_ICONS,
             ],
         ]);
     }
@@ -84,6 +86,10 @@ class TenantBrandingController extends Controller
             'footer_links' => TenantBranding::footerLinks($request->validated('footer_links') ?? []),
             ...$stored,
         ];
+
+        if ($request->exists('sidebar_links')) {
+            $attributes['sidebar_links'] = TenantBranding::sidebarLinks($request->validated('sidebar_links') ?? []);
+        }
 
         if (! isset($stored['favicon']) && $request->boolean('remove_favicon')) {
             $attributes['favicon'] = null;
@@ -138,7 +144,11 @@ class TenantBrandingController extends Controller
     private function snapshot(Tenant $tenant): array
     {
         return collect([...self::EDITABLE, ...TenantBranding::ASSETS])
-            ->mapWithKeys(fn (string $key) => [$key => $tenant->getAttribute($key)])
+            ->mapWithKeys(fn (string $key) => [$key => match ($key) {
+                'sidebar_links' => TenantBranding::sidebarLinks($tenant->getAttribute($key)),
+                'footer_links' => TenantBranding::footerLinks($tenant->getAttribute($key)),
+                default => $tenant->getAttribute($key),
+            }])
             ->all();
     }
 }

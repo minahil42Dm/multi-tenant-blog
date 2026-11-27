@@ -17,14 +17,16 @@ export default function TenantBrandMark({
                     className={`${logoClassName} shrink-0 rounded object-contain`}
                 />
             )}
-            {showName && (
+            {(showName || (showTagline && branding.sidebar_tagline)) && (
                 <span className="min-w-0">
-                    <span
-                        className={`block truncate font-semibold ${textClassName}`}
-                        style={{ color: branding.color }}
-                    >
-                        {branding.name}
-                    </span>
+                    {showName && (
+                        <span
+                            className={`block truncate font-semibold ${textClassName}`}
+                            style={{ color: branding.color }}
+                        >
+                            {branding.name}
+                        </span>
+                    )}
                     {showTagline && branding.sidebar_tagline && (
                         <span className="block truncate text-xs text-gray-500">
                             {branding.sidebar_tagline}

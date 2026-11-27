@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\HomepageCache;
+use App\Support\TenantAbility;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -56,6 +57,14 @@ class Post extends Model
 
     public function scopeVisibleToWriter(Builder $query, Writer $writer): Builder
     {
+        if (! TenantAbility::belongsToCurrentTenant($writer)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if (TenantAbility::allows($writer, TenantAbility::VIEW_ANY_POST)) {
+            return $query;
+        }
+
         return $query->where(fn (Builder $query) => $query
             ->where('user_id', $writer->id)
             ->orWhere(fn (Builder $query) => $query->published()));

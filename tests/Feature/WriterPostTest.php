@@ -2,12 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TenantUserRole;
 use App\Models\Post;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Writer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -29,7 +33,11 @@ class WriterPostTest extends TestCase
         }
 
         if (Schema::hasTable('tenants')) {
-            Tenant::query()->get()->each(fn (Tenant $tenant) => $tenant->delete());
+            Tenant::query()->get()->each(function (Tenant $tenant) {
+                $id = $tenant->id;
+                $tenant->delete();
+                File::deleteDirectory(storage_path('tenant'.$id));
+            });
         }
 
         parent::tearDown();
@@ -210,6 +218,85 @@ class WriterPostTest extends TestCase
             ->assertForbidden();
 
         $tenant->run(fn () => $this->assertSame('Owned', $post->fresh()->title));
+    }
+
+    public function test_tenant_admin_can_view_edit_and_delete_another_writers_draft(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        [$admin, $post] = $tenant->run(function () {
+            $admin = new Writer;
+            $admin->forceFill([
+                'name' => 'Admin',
+                'email' => 'admin@alpha.test',
+                'password' => 'password',
+                'role' => TenantUserRole::Admin,
+            ])->save();
+
+            $owner = Writer::create([
+                'name' => 'Owner',
+                'email' => 'owner@alpha.test',
+                'password' => 'password',
+            ]);
+
+            $post = Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Private draft',
+                'slug' => 'private-draft',
+                'body' => 'Draft body',
+                'status' => 'draft',
+                'created_at' => now()->addMinute(),
+            ]);
+
+            Post::forceCreate([
+                'user_id' => $owner->id,
+                'title' => 'Older note',
+                'slug' => 'older-note',
+                'body' => 'Older',
+                'status' => 'draft',
+            ]);
+
+            return [$admin, $post];
+        });
+
+        $this->actingAs($admin, 'writer')
+            ->get('http://alpha.localhost/posts')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Writer/Posts/Index')
+                ->has('posts', 2)
+                ->where('posts.0.title', 'Private draft')
+                ->where('posts.0.can_manage', true)
+                ->where('posts.1.can_manage', true));
+
+        $this->actingAs($admin, 'writer')
+            ->get('http://alpha.localhost/posts/'.$post->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('post.can_manage', true));
+
+        $this->actingAs($admin, 'writer')
+            ->put('http://alpha.localhost/posts/'.$post->id, [
+                'title' => 'Edited by admin',
+                'body' => 'Updated body',
+                'status' => 'draft',
+                'cover_image' => UploadedFile::fake()->image('cover.png'),
+            ])
+            ->assertRedirect();
+
+        $tenant->run(function () use ($tenant, $post) {
+            $fresh = $post->fresh();
+
+            $this->assertSame('Edited by admin', $fresh->title);
+            $this->assertStringStartsWith('covers/'.$tenant->id.'/', $fresh->cover_image);
+            Storage::disk('public')->assertExists($fresh->cover_image);
+        });
+
+        $this->actingAs($admin, 'writer')
+            ->delete('http://alpha.localhost/posts/'.$post->id)
+            ->assertRedirect();
+
+        $tenant->run(fn () => $this->assertNull($post->fresh()));
     }
 
     public function test_writers_can_only_view_their_own_drafts(): void

@@ -5,10 +5,11 @@ import TextInput from '@/Components/TextInput';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 
-export default function Create({ tenant }) {
+export default function Create({ tenant, roles }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         email: '',
+        role: 'writer',
         password: '',
         password_confirmation: '',
     });
@@ -25,17 +26,17 @@ export default function Create({ tenant }) {
         <AuthenticatedLayout
             header={
                 <h2 className="text-xl font-semibold leading-tight text-gray-800">
-                    Add writer to {tenant.name}
+                    Add user to {tenant.name}
                 </h2>
             }
         >
-            <Head title={`Add writer to ${tenant.name}`} />
+            <Head title={`Add user to ${tenant.name}`} />
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow-sm sm:rounded-lg">
                         <p className="mb-6 text-sm text-gray-600">
-                            The writer will sign in at{' '}
+                            The user will sign in at{' '}
                             <span className="font-medium text-gray-900">
                                 {tenant.domain}/login
                             </span>
@@ -72,6 +73,24 @@ export default function Create({ tenant }) {
                                     required
                                 />
                                 <InputError className="mt-2" message={errors.email} />
+                            </div>
+
+                            <div>
+                                <InputLabel htmlFor="role" value="Role" />
+                                <select
+                                    id="role"
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    value={data.role}
+                                    onChange={(event) => setData('role', event.target.value)}
+                                    required
+                                >
+                                    {roles.map((role) => (
+                                        <option key={role.value} value={role.value}>
+                                            {role.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError className="mt-2" message={errors.role} />
                             </div>
 
                             <div>
@@ -120,7 +139,7 @@ export default function Create({ tenant }) {
 
                             <div className="flex items-center gap-4">
                                 <PrimaryButton disabled={processing}>
-                                    Create writer
+                                    Create user
                                 </PrimaryButton>
                                 <Link
                                     href={route('admin.tenants.index')}

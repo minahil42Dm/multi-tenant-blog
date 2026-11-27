@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TenantUserRole;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Writer;
@@ -226,7 +227,11 @@ class AdminWriterManagementTest extends TestCase
                 ->component('Admin/Tenants/Writers/Create')
                 ->where('tenant.id', $tenant->id)
                 ->where('tenant.name', 'Alpha')
-                ->where('tenant.domain', 'alpha.localhost'));
+                ->where('tenant.domain', 'alpha.localhost')
+                ->where('roles', [
+                    ['value' => 'admin', 'label' => 'Tenant admin'],
+                    ['value' => 'writer', 'label' => 'Tenant user'],
+                ]));
     }
 
     public function test_verified_admin_creates_a_writer_only_in_the_selected_tenant_database(): void
@@ -247,6 +252,7 @@ class AdminWriterManagementTest extends TestCase
 
             $this->assertNotNull($writer);
             $this->assertSame('Ada Writer', $writer->name);
+            $this->assertSame(TenantUserRole::Writer, $writer->role);
             $this->assertNotSame('secret-password', $writer->password);
             $this->assertTrue(Hash::check('secret-password', $writer->password));
         });
@@ -262,6 +268,54 @@ class AdminWriterManagementTest extends TestCase
         ])->assertRedirect(route('writer.dashboard', absolute: false));
 
         $this->assertAuthenticated('writer');
+    }
+
+    public function test_super_admin_can_create_a_tenant_admin_without_changing_existing_users(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+        $existing = $tenant->run(function () {
+            $writer = Writer::factory()->create(['email' => 'existing@alpha.test']);
+            $writer->forceFill(['role' => TenantUserRole::Writer])->save();
+
+            return $writer->id;
+        });
+
+        $this->actingAs(User::factory()->superAdmin()->create())
+            ->post(route('admin.tenants.writers.store', $tenant), $this->writerData([
+                'name' => 'Avery Admin',
+                'email' => 'avery@alpha.test',
+                'role' => 'admin',
+            ]))
+            ->assertRedirect(route('admin.tenants.writers.index', $tenant));
+
+        $tenant->run(function () use ($existing) {
+            $this->assertSame(TenantUserRole::Admin, Writer::query()->where('email', 'avery@alpha.test')->first()->role);
+            $this->assertSame(TenantUserRole::Writer, Writer::query()->find($existing)->role);
+        });
+    }
+
+    public function test_support_cannot_create_a_tenant_admin(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        $this->actingAs(User::factory()->support()->create())
+            ->post(route('admin.tenants.writers.store', $tenant), $this->writerData(['role' => 'admin']))
+            ->assertForbidden();
+
+        $this->assertTenantWriterCount($tenant, 0);
+    }
+
+    public function test_an_unknown_role_is_rejected(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+
+        $this->actingAs(User::factory()->superAdmin()->create())
+            ->from(route('admin.tenants.writers.create', $tenant))
+            ->post(route('admin.tenants.writers.store', $tenant), $this->writerData(['role' => 'super_admin']))
+            ->assertRedirect(route('admin.tenants.writers.create', $tenant))
+            ->assertSessionHasErrors('role');
+
+        $this->assertTenantWriterCount($tenant, 0);
     }
 
     public function test_same_email_can_exist_in_separate_tenants(): void
@@ -363,7 +417,7 @@ class AdminWriterManagementTest extends TestCase
                 'password' => 'secret-password',
                 'password_confirmation' => 'different-password',
             ])
-            ->assertSessionHasErrors(['name', 'email', 'password']);
+            ->assertSessionHasErrors(['name', 'email', 'password', 'role']);
 
         $oldInput = session()->getOldInput();
 
@@ -392,6 +446,7 @@ class AdminWriterManagementTest extends TestCase
         return array_merge([
             'name' => 'Ada Writer',
             'email' => 'ada@alpha.test',
+            'role' => 'writer',
             'password' => 'secret-password',
             'password_confirmation' => 'secret-password',
         ], $overrides);

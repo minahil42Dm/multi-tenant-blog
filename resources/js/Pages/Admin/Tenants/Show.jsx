@@ -43,7 +43,7 @@ function DeleteTenant({ tenant, confirmation }) {
         <div className="mt-6 rounded-lg border border-red-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-medium text-red-700">Delete tenant</h3>
             <p className="mt-1 text-sm text-gray-600">
-                Permanently deletes {tenant.name}, its database, writers, posts,
+                Permanently deletes {tenant.name}, its database, users, posts,
                 domains and uploaded files. This cannot be undone.
             </p>
             {!tenant.is_suspended && (
@@ -130,7 +130,7 @@ export default function Show({ tenant, deleteConfirmation }) {
                                     href={route('admin.tenants.edit', tenant.id)}
                                     className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-widest text-gray-700 hover:bg-gray-50"
                                 >
-                                    Edit domains
+                                    Edit tenant
                                 </Link>
                                 <TenantStatusButton tenant={tenant} redirectTo="show" />
                             </>
@@ -214,7 +214,7 @@ export default function Show({ tenant, deleteConfirmation }) {
                                                 )}
                                                 className="text-indigo-600 underline hover:text-indigo-800"
                                             >
-                                                Add writer
+                                                Add user
                                             </Link>
                                         )}
                                 </div>

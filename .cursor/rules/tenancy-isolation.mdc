@@ -10,14 +10,14 @@ platform data. Isolation bugs are the highest-severity bugs in this project.
 
 ## Prohibited
 
-- **Accessing tenant data before tenancy is initialized.** `Writer` and `Post` throw in
-  `getConnectionName()` when `tenancy()->initialized` is false. Never weaken that check,
-  never query `users`/`posts` tenant tables via `DB::` in central context.
+- **Accessing tenant data before tenancy is initialized.** `Writer`, `Post`, `Contact`, `Tag`,
+  `ContactNote`, and `ContactImport` throw in `getConnectionName()` when `tenancy()->initialized`
+  is false. Never weaken that check, never query tenant tables via `DB::` in central context.
 - **Cross-tenant database or file access.** Never build a connection to another tenant's
   database, call `DB::connection('tenant')` outside an active tenant, or read/write another
   tenant's `storage/tenant{id}` folder or `covers/{otherTenantId}/` paths.
-- **Tenant-specific records in the central database.** Writers, posts, and cover images
-  belong in the tenant database/storage. Do not add tenant tables or `tenant_id` columns
+- **Tenant-specific records in the central database.** Writers, posts, contacts, tags, notes,
+  imports, and cover images belong in the tenant database/storage. Do not add tenant tables or `tenant_id` columns
   to central tables to "simplify" queries. The only central tables with `tenant_id` are platform
   metadata: stancl's `domains` and `tenant_user_impersonation_tokens`, and `audit_logs` (no FK, so history
   survives tenant deletion). They never hold tenant content.

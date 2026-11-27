@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Writer;
 
+use App\Enums\TenantUserRole;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\Writer;
 use App\Support\CentralAbility;
 use App\Support\Impersonation;
+use App\Support\TenantImpersonation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,7 +26,7 @@ class ImpersonationController extends Controller
      */
     public function start(Request $request): RedirectResponse
     {
-        abort_if(Impersonation::active($request), 403, 'Stop the current impersonation first.');
+        abort_if(Impersonation::active($request) || TenantImpersonation::active($request), 403, 'Stop the current impersonation first.');
 
         $value = $request->input('token');
 
@@ -81,8 +83,45 @@ class ImpersonationController extends Controller
             : '/dashboard');
     }
 
-    public function stop(Request $request): SymfonyResponse
+    /**
+     * Switches the tenant session to a writer while remembering the tenant admin
+     * who started it. The admin's abilities are not kept on the session.
+     */
+    public function impersonate(Request $request, Writer $writer): RedirectResponse
     {
+        $actor = $request->user('writer');
+
+        abort_unless($actor instanceof Writer && $actor->isTenantAdmin(), 403);
+        abort_if(Impersonation::active($request) || TenantImpersonation::active($request), 403, 'Stop the current impersonation first.');
+        abort_if((int) $actor->getKey() === (int) $writer->getKey(), 403, 'You cannot impersonate yourself.');
+        abort_unless($writer->role === TenantUserRole::Writer, 403, 'Only a writer can be impersonated.');
+
+        $tenantId = (string) tenant()->getTenantKey();
+
+        Auth::guard('writer')->logout();
+        $request->session()->invalidate();
+        $request->session()->put(ScopeSessions::$tenantIdKey, tenant()->getTenantKey());
+        Auth::guard('writer')->login($writer);
+        $request->session()->regenerate();
+        TenantImpersonation::remember($request, $actor, $writer);
+
+        AuditLog::record('tenant_impersonation.started', null, $tenantId, [
+            'actor_id' => (int) $actor->getKey(),
+            'actor_email' => $actor->email,
+            'target_id' => (int) $writer->getKey(),
+            'target_email' => $writer->email,
+            'domain' => $request->getHost(),
+        ]);
+
+        return redirect()->route('writer.dashboard');
+    }
+
+    public function stop(Request $request): SymfonyResponse|RedirectResponse
+    {
+        if (TenantImpersonation::active($request)) {
+            return $this->stopTenantImpersonation($request);
+        }
+
         $returnUrl = Impersonation::stop($request);
 
         abort_if($returnUrl === null, 403);
@@ -92,5 +131,31 @@ class ImpersonationController extends Controller
         $request->session()->regenerateToken();
 
         return Inertia::location($returnUrl);
+    }
+
+    private function stopTenantImpersonation(Request $request): RedirectResponse
+    {
+        $details = TenantImpersonation::details($request);
+        $actor = TenantImpersonation::actor($request);
+
+        abort_if($details === null || $actor === null, 403);
+
+        AuditLog::record('tenant_impersonation.stopped', null, $details['tenant_id'], [
+            'actor_id' => $details['actor_id'],
+            'actor_email' => $details['actor_email'],
+            'target_id' => $details['writer_id'],
+            'target_email' => $details['writer_email'],
+            'domain' => $request->getHost(),
+            'started_at' => $details['started_at'],
+            'duration_seconds' => max(0, now()->getTimestamp() - strtotime($details['started_at'])),
+        ]);
+
+        Auth::guard('writer')->logout();
+        $request->session()->invalidate();
+        $request->session()->put(ScopeSessions::$tenantIdKey, tenant()->getTenantKey());
+        Auth::guard('writer')->login($actor);
+        $request->session()->regenerate();
+
+        return redirect()->route('writer.users.index');
     }
 }

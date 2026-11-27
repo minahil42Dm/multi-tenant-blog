@@ -616,6 +616,37 @@ class TenantBrandingSettingsTest extends TestCase
                 ->where('branding.logo_url', '/tenancy/assets/'.$tenant->logo));
     }
 
+    public function test_sidebar_links_keep_order_and_reject_unsafe_urls(): void
+    {
+        $tenant = $this->createTenant('alpha.localhost', 'Alpha');
+        $admin = User::factory()->superAdmin()->create();
+
+        $this->actingAs($admin)
+            ->put(route('admin.tenants.branding.update', $tenant), $this->payload([
+                'sidebar_links' => [
+                    ['label' => 'Later', 'url' => 'https://alpha.test/later', 'icon' => 'book', 'order' => 2],
+                    ['label' => 'First', 'url' => 'https://alpha.test/first', 'icon' => 'home', 'order' => 0],
+                    ['label' => 'Bad', 'url' => 'javascript:alert(1)', 'icon' => 'link', 'order' => 1],
+                ],
+            ]))
+            ->assertSessionHasErrors('sidebar_links.2.url');
+
+        $this->actingAs($admin)
+            ->put(route('admin.tenants.branding.update', $tenant), $this->payload([
+                'sidebar_links' => [
+                    ['label' => 'Later', 'url' => 'https://alpha.test/later', 'icon' => 'book', 'order' => 2],
+                    ['label' => 'First', 'url' => 'https://alpha.test/first', 'icon' => 'home', 'order' => 0],
+                ],
+            ]))
+            ->assertRedirect();
+
+        $this->get('http://alpha.localhost/')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('branding.sidebar_links.0.label', 'First')
+                ->where('branding.sidebar_links.0.icon', 'home')
+                ->where('branding.sidebar_links.1.label', 'Later'));
+    }
+
     private function hasBrandingCache(Tenant $tenant): bool
     {
         return DB::connection(config('tenancy.database.central_connection'))
